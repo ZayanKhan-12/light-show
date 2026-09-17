@@ -52,3 +52,38 @@ jobs:
               sys.exit(0)
           sys.exit('validator accepted a malformed file')
           "
+
+  example-shows:
+    name: Analyse the shipped example shows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Report every example show on every vehicle
+        # Exercises the CLI end to end. The examples are expected to produce
+        # findings, so --strict is deliberately not used here; the step fails
+        # only if the tool cannot read or analyse a show.
+        run: |
+          set -euo pipefail
+          mkdir -p _examples
+          for archive in examples/*.zip; do
+            unzip -o -q "$archive" -d _examples
+          done
+          found=0
+          while IFS= read -r show; do
+            found=$((found + 1))
+            echo "::group::$show"
+            python3 tools/vehicle_preview.py "$show"
+            echo "::endgroup::"
+          done < <(find examples _examples -name '*.fseq' | sort)
+          if [ "$found" -eq 0 ]; then
+            echo "No example .fseq files were found" >&2
+            exit 1
+          fi
+          echo "Analysed $found example show(s)."

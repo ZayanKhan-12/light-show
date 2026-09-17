@@ -24,6 +24,7 @@ almost every change is a change to something a car will eventually play.
 | `xlights/layer_groups.json` | Declarative spec for the positional "layer" model groups. Source of truth for what the zip contains. |
 | `xlights/channel_map.json` | Recorded channel assignment of every model. A regression lock, see below. |
 | `tools/xlights_layers.py` | Applies and verifies the two files above against the zip. |
+| `tools/vehicle_preview.py` | Reports where a `.fseq` will behave differently on a given vehicle than it does in the xLights preview. |
 | `tests/` | `unittest` suite, standard library only. |
 | `examples/` | Example shows, distributed as zips. |
 
@@ -76,11 +77,54 @@ zip byte-identical, which is what keeps the spec and the zip from drifting apart
 - **`Backup/` entries inside the zip are historical snapshots.** Leave them alone;
   xLights writes a fresh one each time it opens the folder.
 
+## Vehicle behaviour differs from the preview
+
+The show folder ships **one** superset vehicle model, so the xLights sequencer
+always animates every channel as its own instantly-switching light. Real cars do
+not all work that way, and the difference is invisible while authoring — it is
+the root of most "my show looks wrong on the car" reports, including
+[#42](https://github.com/teslamotors/light-show/issues/42).
+
+`tools/vehicle_preview.py` reports these differences for a finished `.fseq`:
+
+```bash
+python3 tools/vehicle_preview.py path/to/lightshow.fseq
+python3 tools/vehicle_preview.py path/to/lightshow.fseq --vehicle model3 -v
+```
+
+The rules it encodes, all of them taken from `README.md`:
+
+- **Channels are OR'd on some vehicles.** On Model 3/Y, Channels 4, 5 and 6
+  drive one output per side, and all four aux park / side marker channels drive
+  a single output. A group only flashes if *every* channel in it shares an
+  off-time; otherwise it sits solid.
+- **Ramping is per-vehicle.** Front turn and signature lights are boolean on
+  Model S but ramp on Model 3/Y, so a two-frame effect that reads as a crisp
+  flash in the preview barely lights the lamp on a Model 3.
+- **Channel 4 is the ramp leader.** The ramp duration for Channels 4-6 always
+  comes from the Channel 4 effect, never from Channel 5 or 6.
+- **Brightness is an enum, not a level.** Outside Cybertruck's full-brightness
+  channels, the byte selects a documented effect: 0/10/20/30/70/80/90/100 for
+  lights, 0/25/50/75/100 for closures. Anything above 50% is "on". The exact
+  percentages are bound to hotkeys in `xlights_keybindings.xml`.
+- **Not every light exists on every build.** Front fog and aux park are absent
+  from Model 3 Standard Range +, side markers are a North America fitment, and
+  rear fog is the opposite.
+
+When code encodes one of these, cite the `README.md` section it came from in a
+comment. If the code and the README disagree, that is a bug worth raising rather
+than silently picking one. Where the README is simply silent — it describes the
+aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
+instead of presenting the guess as fact.
+
 ## Conventions
 
 - **Python**: standard library only, in both `validator.py` and `tools/`. Users
   run these by double-clicking a file; a dependency they have to install is a
   support burden. Target 3.7+.
+- **`validator.py` blocks on `input()`** so that double-clicking it on Windows
+  leaves the window open. Never call it from a script or a CI step; import
+  `validate()` instead.
 - **Group naming**: `GRP ` for left/right pairs of one light type, `All ` for the
   multishow-import groups, `LR ` for light-bar halves, `LAYER ` for the
   positional layers. Match the surrounding convention rather than inventing one.

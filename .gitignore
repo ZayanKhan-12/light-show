@@ -9,3 +9,6 @@ dist/
 
 # Scratch file written by tools/xlights_layers.py while rewriting a show folder
 *.zip.tmp
+
+# Scratch space used by the CI example-show job
+_examples/
