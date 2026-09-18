@@ -316,6 +316,12 @@ _MODEL_X = dataclasses.replace(
     notes=(
         "Aux park and side markers are assumed to share the Model S per-side "
         "pairing; README.md does not state Model X separately.",
+        "One owner reports that on a 2022 Model X Plaid the Front Turn and "
+        "Aux Park channels are the same lamp -- orange from Front Turn, "
+        "white from Aux Park, a dimmer mix from both. That is a single "
+        "report and is not modelled here; see issue #76, and "
+        "tools/channel_probe.py --group front-turn-aux-park to check your "
+        "own car.",
     ),
 )
 

@@ -669,6 +669,8 @@ That writes `probe.fseq` and `probe.wav` and prints the order it used:
 
 Copy both files into a `LightShow` folder, play the show and film the car; a tone sounds as each channel comes on, so the video lines up with the schedule. `--group lights` walks every light channel, `--channels 1-6` takes an explicit list, and `--include-closures` adds closures - which are left out by default because each one costs an [actuation](#closures) and is left open at the end.
 
+To find out whether two channels drive the same lamp, drive them together with a `+`: `--channels 13,17,13+17` lights the left front turn, then the left aux park, then both at once.
+
 The same probe times a closure: open the liftgate and the video shows how long it takes on that car.
 
 #### Reporting a channel mapping difference
@@ -683,6 +685,13 @@ A confirmed difference is **documented for that vehicle**, not corrected by chan
 - On Model S, aux park and side markers operate together, but they have independent left/right control. They will activate during the following requests from xLights:
    - Left side: ```(Left side marker || Left aux park)```
    - Right side: ```(Right side marker || Right aux park)```
+- Model X is not described above, and one owner report is the only account of it here. On a 2022 Model X Plaid, Front Turn (7) and Aux Park (9) were reported to be the same lamp, lit orange by Front Turn, white by Aux Park, and a dimmer orange-yellow by both together ([#76](https://github.com/teslamotors/light-show/issues/76)). That has not been confirmed on other builds. If you have a Model X, you can check it in about fifteen seconds and say what you see on that issue:
+
+    ```
+    python3 tools/channel_probe.py probe --group front-turn-aux-park
+    ```
+
+    The probe lights Front Turn on its own, then Aux Park on its own, then both together, so a phone video shows whether they are one lamp or two.
 
 #### <a name="ramping_channels_4_6"></a>Ramping Channels 4-6
 - For Model S/X:

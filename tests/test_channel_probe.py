@@ -22,19 +22,25 @@ sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.join(REPO_ROOT, "tools"))
 
 import channel_probe as cp  # noqa: E402
+
+
+def ONE(*channels):
+    """One turn per channel, the shape build_probe() takes."""
+    return [(c,) for c in channels]
 import validator  # noqa: E402
 import vehicle_preview as vp  # noqa: E402
 
 
 class ParseChannelsTests(unittest.TestCase):
     def test_a_plain_list(self):
-        self.assertEqual(cp.parse_channels("1,2,3"), [1, 2, 3])
+        self.assertEqual(cp.parse_channels("1,2,3"), [(1,), (2,), (3,)])
 
     def test_a_range(self):
-        self.assertEqual(cp.parse_channels("1-4"), [1, 2, 3, 4])
+        self.assertEqual(cp.parse_channels("1-4"), [(1,), (2,), (3,), (4,)])
 
     def test_ranges_and_singles_together(self):
-        self.assertEqual(cp.parse_channels("1, 3-5 ,9"), [1, 3, 4, 5, 9])
+        self.assertEqual(cp.parse_channels("1, 3-5 ,9"),
+                         [(1,), (3,), (4,), (5,), (9,)])
 
     def test_a_backwards_range_is_rejected(self):
         with self.assertRaises(cp.ProbeError):
@@ -45,28 +51,91 @@ class ParseChannelsTests(unittest.TestCase):
             cp.parse_channels("left headlight")
 
 
+class CombinedStepTests(unittest.TestCase):
+    """Issue 76: comparing two channels that may be one lamp.
+
+    A Model X owner reports Front Turn and Aux Park as the same light --
+    orange from one, white from the other, a dimmer mix from both. Answering
+    that needs a turn that drives both at once.
+    """
+
+    def test_a_plus_makes_one_turn_of_several_channels(self):
+        self.assertEqual(cp.parse_channels("13+17"), [(13, 17)])
+
+    def test_singles_and_combinations_mix(self):
+        self.assertEqual(cp.parse_channels("13,17,13+17"),
+                         [(13,), (17,), (13, 17)])
+
+    def test_nonsense_inside_a_combination_is_rejected(self):
+        with self.assertRaises(cp.ProbeError):
+            cp.parse_channels("13+left")
+
+    def test_the_combined_turn_drives_every_channel_in_it(self):
+        probe = cp.build_probe([(13,), (17,), (13, 17)], on_ms=200,
+                               gap_ms=200, step_ms=20)
+        raw = cp.render_fseq(probe)
+        show = vp.Show(probe.channel_count, probe.frame_count, probe.step_ms,
+                       raw[cp.HEADER_BYTES:])
+
+        frame = probe.steps[2].start_ms // probe.step_ms
+        lit = [c for c in range(1, probe.channel_count + 1)
+               if show.series(c)[frame]]
+        self.assertEqual(lit, [13, 17])
+
+    def test_the_single_turns_stay_single(self):
+        probe = cp.build_probe([(13,), (17,), (13, 17)], on_ms=200,
+                               gap_ms=200, step_ms=20)
+        raw = cp.render_fseq(probe)
+        show = vp.Show(probe.channel_count, probe.frame_count, probe.step_ms,
+                       raw[cp.HEADER_BYTES:])
+
+        for index, expected in enumerate([[13], [17]]):
+            frame = probe.steps[index].start_ms // probe.step_ms
+            lit = [c for c in range(1, probe.channel_count + 1)
+                   if show.series(c)[frame]]
+            self.assertEqual(lit, expected)
+
+    def test_a_combined_turn_is_named_after_both_channels(self):
+        probe = cp.build_probe([(13, 17)])
+        self.assertEqual(probe.steps[0].name,
+                         "Left Front Turn + Left Aux Park")
+
+    def test_the_named_group_covers_both_sides(self):
+        chosen = cp.resolve_channels("front-turn-aux-park", None, False)
+        self.assertEqual(chosen, [(13,), (17,), (14,), (18,)])
+
+    def test_a_combination_including_a_closure_needs_the_flag(self):
+        # The whole turn is dropped, and dropping every turn is an error.
+        with self.assertRaises(cp.ProbeError):
+            cp.resolve_channels(None, "1+41", False)
+        self.assertEqual(cp.resolve_channels(None, "1+41", True), [(1, 41)])
+
+
 class ChannelSelectionTests(unittest.TestCase):
     def test_the_default_group_is_the_beams_in_question(self):
         # Issue 72 is about Inner and Outer Main Beam.
-        self.assertEqual(cp.resolve_channels(None, None, False), [1, 2, 3, 4])
+        self.assertEqual(cp.resolve_channels(None, None, False),
+                         [(1,), (2,), (3,), (4,)])
         for channel in cp.GROUPS["headlights"]:
             self.assertIn("Main Beam", vp.channel_name(channel))
 
     def test_closures_are_left_out_unless_asked_for(self):
         chosen = cp.resolve_channels(None, "1,2,41,46", False)
 
-        self.assertEqual(chosen, [1, 2])
-        self.assertNotIn(41, chosen)
+        self.assertEqual(chosen, [(1,), (2,)])
+        self.assertNotIn((41,), chosen)
 
     def test_closures_are_included_on_request(self):
-        self.assertEqual(cp.resolve_channels(None, "1,41", True), [1, 41])
+        self.assertEqual(cp.resolve_channels(None, "1,41", True),
+                         [(1,), (41,)])
 
     def test_the_closures_group_works_without_the_flag(self):
         chosen = cp.resolve_channels("closures", None, False)
 
         self.assertTrue(chosen)
-        for channel in chosen:
-            self.assertEqual(vp.CHANNELS[channel][1], vp.CLOSURE)
+        for step in chosen:
+            for channel in step:
+                self.assertEqual(vp.CHANNELS[channel][1], vp.CLOSURE)
 
     def test_selecting_only_closures_without_the_flag_explains_itself(self):
         with self.assertRaises(cp.ProbeError) as caught:
@@ -75,7 +144,7 @@ class ChannelSelectionTests(unittest.TestCase):
 
     def test_the_order_given_is_kept_and_duplicates_dropped(self):
         self.assertEqual(cp.resolve_channels(None, "3,1,3,2", False),
-                         [3, 1, 2])
+                         [(3,), (1,), (2,)])
 
     def test_every_named_group_resolves(self):
         for name in cp.GROUPS:
@@ -84,47 +153,47 @@ class ChannelSelectionTests(unittest.TestCase):
 
 class ScheduleTests(unittest.TestCase):
     def test_channels_take_turns_with_a_gap_between(self):
-        probe = cp.build_probe([1, 2], on_ms=3000, gap_ms=1000, step_ms=20)
+        probe = cp.build_probe(ONE(1, 2), on_ms=3000, gap_ms=1000, step_ms=20)
 
         self.assertEqual([(s.start_ms, s.end_ms) for s in probe.steps],
                          [(1000, 4000), (5000, 8000)])
 
     def test_the_show_is_long_enough_for_the_last_channel(self):
-        probe = cp.build_probe([1, 2], on_ms=3000, gap_ms=1000, step_ms=20)
+        probe = cp.build_probe(ONE(1, 2), on_ms=3000, gap_ms=1000, step_ms=20)
 
         self.assertGreaterEqual(probe.duration_ms, probe.steps[-1].end_ms)
         self.assertEqual(probe.frame_count, 9000 // 20)
 
     def test_each_step_carries_the_channel_name(self):
-        probe = cp.build_probe([1])
+        probe = cp.build_probe(ONE(1))
         self.assertEqual(probe.steps[0].name, vp.channel_name(1))
 
     def test_an_unsupported_frame_interval_is_rejected(self):
         for step_ms in (10, 120):
             with self.assertRaises(cp.ProbeError):
-                cp.build_probe([1], step_ms=step_ms)
+                cp.build_probe(ONE(1), step_ms=step_ms)
 
     def test_a_channel_shorter_than_a_frame_is_rejected(self):
         with self.assertRaises(cp.ProbeError):
-            cp.build_probe([1], on_ms=10, step_ms=20)
+            cp.build_probe(ONE(1), on_ms=10, step_ms=20)
 
     def test_a_channel_outside_the_layout_is_rejected(self):
         with self.assertRaises(cp.ProbeError) as caught:
-            cp.build_probe([201], channel_count=200)
+            cp.build_probe(ONE(201), channel_count=200)
         self.assertIn("201", str(caught.exception))
 
     def test_a_48_channel_layout_rejects_the_higher_channels(self):
         with self.assertRaises(cp.ProbeError):
-            cp.build_probe([100], channel_count=48)
+            cp.build_probe(ONE(100), channel_count=48)
 
     def test_an_unsupported_layout_is_explained_by_the_validator(self):
         with self.assertRaises(cp.ProbeError) as caught:
-            cp.build_probe([1], channel_count=64)
+            cp.build_probe(ONE(1), channel_count=64)
         self.assertIn(validator.VEHICLE_ERROR, str(caught.exception))
 
     def test_a_probe_longer_than_four_hours_is_rejected(self):
         with self.assertRaises(cp.ProbeError) as caught:
-            cp.build_probe([1], on_ms=5 * 60 * 60 * 1000)
+            cp.build_probe(ONE(1), on_ms=5 * 60 * 60 * 1000)
         self.assertIn("4 hours", str(caught.exception))
 
 
@@ -134,14 +203,14 @@ class FseqTests(unittest.TestCase):
         return probe, cp.render_fseq(probe)
 
     def test_the_file_passes_the_repository_validator(self):
-        _, raw = self.probe_bytes([1, 2, 3, 4])
+        _, raw = self.probe_bytes(ONE(1, 2, 3, 4))
         results = validator.validate(io.BytesIO(raw))
 
         self.assertGreater(results.frame_count, 0)
         self.assertEqual(results.step_time, cp.DEFAULT_STEP_MS)
 
     def test_the_header_says_what_it_should(self):
-        probe, raw = self.probe_bytes([1], channel_count=200)
+        probe, raw = self.probe_bytes(ONE(1), channel_count=200)
         channels, frames, step = struct.unpack("<IIB", raw[10:19])
 
         self.assertEqual(raw[0:4], b"PSEQ")
@@ -151,7 +220,7 @@ class FseqTests(unittest.TestCase):
         self.assertEqual(len(raw), cp.HEADER_BYTES + 200 * probe.frame_count)
 
     def test_only_the_scheduled_channel_is_lit(self):
-        probe, raw = self.probe_bytes([1, 2], on_ms=200, gap_ms=200,
+        probe, raw = self.probe_bytes(ONE(1, 2), on_ms=200, gap_ms=200,
                                       step_ms=20)
         show = vp.Show(probe.channel_count, probe.frame_count, probe.step_ms,
                        raw[cp.HEADER_BYTES:])
@@ -160,24 +229,24 @@ class FseqTests(unittest.TestCase):
             frame = step.start_ms // probe.step_ms
             lit = [c for c in range(1, probe.channel_count + 1)
                    if show.series(c)[frame]]
-            self.assertEqual(lit, [step.channel])
+            self.assertEqual(lit, list(step.channels))
 
     def test_everything_is_dark_in_the_gaps(self):
-        probe, raw = self.probe_bytes([1], on_ms=200, gap_ms=200, step_ms=20)
+        probe, raw = self.probe_bytes(ONE(1), on_ms=200, gap_ms=200, step_ms=20)
         show = vp.Show(probe.channel_count, probe.frame_count, probe.step_ms,
                        raw[cp.HEADER_BYTES:])
 
         self.assertEqual(sum(show.series(1)[:probe.steps[0].start_ms // 20]), 0)
 
     def test_lights_are_driven_fully_on(self):
-        probe, raw = self.probe_bytes([1])
+        probe, raw = self.probe_bytes(ONE(1))
         show = vp.Show(probe.channel_count, probe.frame_count, probe.step_ms,
                        raw[cp.HEADER_BYTES:])
         self.assertEqual(max(show.series(1)), cp.ON_VALUE)
 
     def test_a_closure_is_sent_open_not_full_brightness(self):
         # README.md: 25% is Open; 100% on a closure is Stop.
-        probe, raw = self.probe_bytes([41])
+        probe, raw = self.probe_bytes(ONE(41))
         show = vp.Show(probe.channel_count, probe.frame_count, probe.step_ms,
                        raw[cp.HEADER_BYTES:])
         value = max(show.series(41))
@@ -186,7 +255,7 @@ class FseqTests(unittest.TestCase):
         self.assertEqual(vp.CLOSURE_CODES[vp.to_percent(value)], "Open")
 
     def test_the_probe_spends_one_command_per_closure(self):
-        probe, raw = self.probe_bytes([41, 46])
+        probe, raw = self.probe_bytes(ONE(41, 46))
         show = vp.Show(probe.channel_count, probe.frame_count, probe.step_ms,
                        raw[cp.HEADER_BYTES:])
 
@@ -197,7 +266,7 @@ class FseqTests(unittest.TestCase):
 
 class WavTests(unittest.TestCase):
     def test_the_audio_matches_the_show(self):
-        probe = cp.build_probe([1, 2])
+        probe = cp.build_probe(ONE(1, 2))
         raw = cp.render_wav(probe)
         with wave.open(io.BytesIO(raw)) as handle:
             # README.md, "Audio file requirements": 44.1 kHz.
@@ -207,7 +276,7 @@ class WavTests(unittest.TestCase):
         self.assertAlmostEqual(seconds, probe.duration_ms / 1000.0, places=2)
 
     def test_a_tone_marks_each_channel(self):
-        probe = cp.build_probe([1, 2], on_ms=1000, gap_ms=1000)
+        probe = cp.build_probe(ONE(1, 2), on_ms=1000, gap_ms=1000)
         with wave.open(io.BytesIO(cp.render_wav(probe))) as handle:
             frames = handle.readframes(handle.getnframes())
 
@@ -230,7 +299,7 @@ class WriteTests(unittest.TestCase):
         self.tmpdir = self._tmp.name
 
     def test_both_files_are_written_and_named_together(self):
-        probe = cp.build_probe([1, 2])
+        probe = cp.build_probe(ONE(1, 2))
         fseq_path, wav_path = cp.write_probe(
             probe, os.path.join(self.tmpdir, "probe"))
 
@@ -240,7 +309,7 @@ class WriteTests(unittest.TestCase):
                          os.path.splitext(wav_path)[0])
 
     def test_an_fseq_suffix_on_the_output_name_is_not_doubled(self):
-        probe = cp.build_probe([1])
+        probe = cp.build_probe(ONE(1))
         fseq_path, _ = cp.write_probe(
             probe, os.path.join(self.tmpdir, "probe.fseq"))
         self.assertTrue(fseq_path.endswith("probe.fseq"))
@@ -250,7 +319,7 @@ class WriteTests(unittest.TestCase):
 
         folder = os.path.join(self.tmpdir, "LightShow")
         os.makedirs(folder)
-        cp.write_probe(cp.build_probe([1, 2]), os.path.join(folder, "probe"))
+        cp.write_probe(cp.build_probe(ONE(1, 2)), os.path.join(folder, "probe"))
         report = usb_check.check_drive(self.tmpdir)
 
         self.assertEqual([s.name for s in report.playable_shows], ["probe"])

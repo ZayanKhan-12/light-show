@@ -82,16 +82,24 @@ class ProbeError(Exception):
 
 @dataclasses.dataclass
 class Step:
-    """One channel's turn."""
+    """One turn: a channel, or several driven together.
 
-    channel: int
+    Several at once is how you compare lights that may share a lamp --
+    https://github.com/teslamotors/light-show/issues/76 reports Front Turn
+    and Aux Park as one lamp on a Model X, orange from one channel, white
+    from the other and a dimmer mix from both.
+    """
+
+    channels: Tuple[int, ...]
     name: str
     kind: str
     start_ms: int
     end_ms: int
 
     def as_dict(self) -> dict:
-        return dataclasses.asdict(self)
+        data = dataclasses.asdict(self)
+        data["channels"] = list(self.channels)
+        return data
 
 
 @dataclasses.dataclass
@@ -129,6 +137,8 @@ def _channels_of_kind(kind: str) -> List[int]:
 # whose order is in question, kept adjacent so a video is easy to read.
 GROUPS: Dict[str, List[int]] = {
     "headlights": [1, 2, 3, 4],
+    # Issue #76: on a Model X these were reported to be one lamp.
+    "front-turn-aux-park": [13, 17, 14, 18],
     "front": [c for c in _channels_of_kind(LIGHT) if c <= 22],
     "lights": _channels_of_kind(LIGHT),
     "closures": _channels_of_kind(CLOSURE),
@@ -136,12 +146,27 @@ GROUPS: Dict[str, List[int]] = {
 }
 
 
-def parse_channels(text: str) -> List[int]:
-    """Parse "1,2,7-9" into a list of channels, keeping the order given."""
-    channels: List[int] = []
+def parse_channels(text: str) -> List[Tuple[int, ...]]:
+    """Parse a channel spec into one entry per turn.
+
+    "1,2"    two turns, one channel each
+    "1-4"    four turns
+    "13+17"  one turn driving both channels at once
+    """
+    steps: List[Tuple[int, ...]] = []
     for part in text.split(","):
         part = part.strip()
         if not part:
+            continue
+        if "+" in part:
+            together: List[int] = []
+            for piece in part.split("+"):
+                piece = piece.strip()
+                try:
+                    together.append(int(piece))
+                except ValueError:
+                    raise ProbeError("{!r} is not a channel".format(piece))
+            steps.append(tuple(together))
             continue
         if "-" in part.lstrip("-"):
             first, _, last = part.partition("-")
@@ -151,33 +176,35 @@ def parse_channels(text: str) -> List[int]:
                 raise ProbeError("{!r} is not a channel range".format(part))
             if low > high:
                 raise ProbeError("{!r} counts backwards".format(part))
-            channels.extend(range(low, high + 1))
-        else:
-            try:
-                channels.append(int(part))
-            except ValueError:
-                raise ProbeError("{!r} is not a channel".format(part))
-    return channels
+            steps.extend((c,) for c in range(low, high + 1))
+            continue
+        try:
+            steps.append((int(part),))
+        except ValueError:
+            raise ProbeError("{!r} is not a channel".format(part))
+    return steps
 
 
 def resolve_channels(group: Optional[str], explicit: Optional[str],
-                     include_closures: bool) -> List[int]:
+                     include_closures: bool) -> List[Tuple[int, ...]]:
     if explicit:
         channels = parse_channels(explicit)
     else:
-        channels = list(GROUPS[group or "headlights"])
+        channels = [(c,) for c in GROUPS[group or "headlights"]]
 
     if not include_closures and not (group == "closures"):
-        kept = [c for c in channels
-                if vehicle_preview.CHANNELS.get(c, ("", LIGHT))[1] != CLOSURE]
-        channels = kept
+        channels = [
+            step for step in channels
+            if not any(
+                vehicle_preview.CHANNELS.get(c, ("", LIGHT))[1] == CLOSURE
+                for c in step)]
 
     seen, ordered = set(), []
-    for channel in channels:
-        if channel in seen:
+    for step in channels:
+        if step in seen:
             continue
-        seen.add(channel)
-        ordered.append(channel)
+        seen.add(step)
+        ordered.append(step)
 
     if not ordered:
         raise ProbeError(
@@ -199,7 +226,8 @@ def _describe(channel: int) -> Tuple[str, str]:
 # --------------------------------------------------------------------------
 
 
-def build_probe(channels: Sequence[int], on_ms: int = DEFAULT_ON_MS,
+def build_probe(channels: Sequence[Sequence[int]],
+                on_ms: int = DEFAULT_ON_MS,
                 gap_ms: int = DEFAULT_GAP_MS,
                 step_ms: int = DEFAULT_STEP_MS,
                 channel_count: int = 200) -> Probe:
@@ -215,7 +243,8 @@ def build_probe(channels: Sequence[int], on_ms: int = DEFAULT_ON_MS,
     if channel_count not in validator.VALID_CHANNEL_COUNTS:
         raise ProbeError(validator.describe_channel_count(channel_count))
 
-    over = [c for c in channels if c > channel_count or c < 1]
+    flat = [c for step in channels for c in step]
+    over = [c for c in flat if c > channel_count or c < 1]
     if over:
         raise ProbeError(
             "Channel(s) {} are outside a {}-channel show.".format(
@@ -223,9 +252,11 @@ def build_probe(channels: Sequence[int], on_ms: int = DEFAULT_ON_MS,
 
     steps: List[Step] = []
     cursor = gap_ms                       # a gap first, so filming can settle
-    for channel in channels:
-        name, kind = _describe(channel)
-        steps.append(Step(channel=channel, name=name, kind=kind,
+    for step_channels in channels:
+        described = [_describe(c) for c in step_channels]
+        name = " + ".join(n for n, _ in described)
+        kind = CLOSURE if any(k == CLOSURE for _, k in described) else LIGHT
+        steps.append(Step(channels=tuple(step_channels), name=name, kind=kind,
                           start_ms=cursor, end_ms=cursor + on_ms))
         cursor += on_ms + gap_ms
 
@@ -254,11 +285,13 @@ def render_fseq(probe: Probe) -> bytes:
 
     data = bytearray(probe.channel_count * probe.frame_count)
     for step in probe.steps:
-        value = (CLOSURE_OPEN_VALUE if step.kind == CLOSURE else ON_VALUE)
         first = step.start_ms // probe.step_ms
         last = step.end_ms // probe.step_ms
-        for frame in range(first, min(last, probe.frame_count)):
-            data[frame * probe.channel_count + (step.channel - 1)] = value
+        for channel in step.channels:
+            _, kind = _describe(channel)
+            value = CLOSURE_OPEN_VALUE if kind == CLOSURE else ON_VALUE
+            for frame in range(first, min(last, probe.frame_count)):
+                data[frame * probe.channel_count + (channel - 1)] = value
     return bytes(header) + bytes(data)
 
 
@@ -327,9 +360,10 @@ def render_schedule(probe: Probe, fseq_path: str, wav_path: str) -> str:
     ]
     width = max((len(s.name) for s in probe.steps), default=0)
     for index, step in enumerate(probe.steps, start=1):
-        out.append("  {:>2}. {} - {}   channel {:>3}  {}".format(
+        out.append("  {:>2}. {} - {}   {:>9}  {}".format(
             index, _format_time(step.start_ms), _format_time(step.end_ms),
-            step.channel, step.name.ljust(width)))
+            "+".join(str(c) for c in step.channels),
+            step.name.ljust(width)))
     closures = [s for s in probe.steps if s.kind == CLOSURE]
     if closures:
         out.append("")
@@ -356,7 +390,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--group", choices=sorted(GROUPS),
                         help="a named set of channels (default: headlights)")
     parser.add_argument("--channels",
-                        help="explicit channels, e.g. 1,2,3 or 1-6")
+                        help="explicit channels, e.g. 1,2,3 or 1-6; "
+                             "13+17 drives both at once")
     parser.add_argument("--on-ms", type=int, default=DEFAULT_ON_MS,
                         help="how long each channel stays on")
     parser.add_argument("--gap-ms", type=int, default=DEFAULT_GAP_MS,

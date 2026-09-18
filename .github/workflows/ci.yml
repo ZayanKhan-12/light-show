@@ -150,6 +150,9 @@ jobs:
           set -euo pipefail
           rm -rf _probe && mkdir -p _probe/LightShow
           python3 tools/channel_probe.py _probe/LightShow/probe --group headlights
+          # Issue #76: a turn that drives two channels at once must still
+          # produce a show the car accepts.
+          python3 tools/channel_probe.py _probe/pair --channels 13,17,13+17
           # Not --strict: the runner's own filesystem is not exFAT, and that
           # says nothing about whether the probe is a playable show.
           python3 tools/usb_check.py _probe
