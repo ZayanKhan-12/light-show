@@ -49,6 +49,12 @@ vehicle types. It's recommended to resize or move the preview to fit all cars.
 ## Exporting the show
 Before you can enjoy the show on up to five vehicles, you need to export the effects to one xLights sequence for each car.
 
+> **Do not export the cross-vehicle sequence itself to .fseq.** This show folder
+> defines one 200-channel controller per car, so a sequence exported straight
+> out of it has 1000 channels rather than one car's 200. The vehicle rejects
+> that file with "Incorrect number of channels". The steps below produce the
+> per-car files the cars actually play.
+
 1. Save your cross-vehicle project and close xLights.
 2. Reopen xLights with the default show directory for only one car loaded.
 3. Create a New Sequence with the same settings and audio file used in the cross-vehicle sequence. Select the 'Multishow Import View'
