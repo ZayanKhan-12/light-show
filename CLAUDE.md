@@ -118,6 +118,29 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### The community list is a list, not a recommendation
+
+`README.md`, "Download a Show" links sites the community runs, and people ask
+to be added — [#62](https://github.com/teslamotors/light-show/issues/62) is one
+such request. Two rules keep that answerable:
+
+- **Whether a site belongs on the list is a maintainer's decision.** Nothing in
+  this repository can verify that a site is free, ad-free, non-commercial or
+  well behaved, and those things change without notice. Do not repeat a site's
+  own claims in the README, and do not rank the entries. Add the name and the
+  URL, alphabetically, and let the reader judge.
+- **The shape of the list is mechanical, so it is checked.** The entries sit
+  between `<!-- community-shows: -->` markers, and `tools/docs_check.py` fails
+  a pull request that makes the list unsorted, duplicated, or something other
+  than one `- [Name](https://url)` per line. Alphabetical order is the only
+  thing keeping the list from reading as a ranking.
+
+`tools/docs_check.py` covers the rest of the documentation too — anchors that
+resolve, files that exist, https links without tracking parameters. It
+**deliberately never fetches a URL**. A third-party site being down is not a
+reason a pull request here should fail, and nobody working in this repository
+could fix it.
+
 ### Which car, and which build of it
 
 [#52](https://github.com/teslamotors/light-show/issues/52) asks for a 2020
