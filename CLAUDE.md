@@ -123,6 +123,35 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### An approximate number is not a threshold
+
+[#128](https://github.com/teslamotors/light-show/issues/128) is an owner
+filming the trunk of a shipped example: it opens, stops after a couple of
+seconds and closes again, because a Dance arrives while the liftgate is still
+moving. `analyze_closures()` already had a check for exactly that, and it
+**missed this case by 500 ms**.
+
+The check compared the Open-to-Dance gap against the movement duration in
+`README.md`. Cyber Symphony leaves 14.5 s against a documented 14 s, so it
+passed. But that table is headed "Approximate", and
+[#72](https://github.com/teslamotors/light-show/issues/72) reports a liftgate
+opening in 12 s where it says 14. A documented approximation used as a hard
+boundary will pass shows that fail on a different car, which is the whole
+failure mode.
+
+`DANCE_MARGIN` is a quarter, and the number is not arbitrary. Every
+Open-to-Dance gap in `examples/` measures 0.37x, 0.44x, 0.91x, **1.04x**,
+1.34x, 2.62x, 3.37x and 7.27x of its documented duration. The 1.04x is the
+liftgate from the issue; the next one up is 1.34x. A quarter is the margin
+that separates the case with video evidence from the shows nobody has
+complained about. If that ever needs revisiting, re-measure rather than
+guess — the survey is a short script over `closure_usage()`.
+
+The general habit: **when a documented figure is labelled approximate, do not
+turn it into a `<` comparison.** Either carry a margin or report the margin
+you have, and say in the finding which number is documented and which is the
+tool's judgement.
+
 ### A vague report still has checkable causes
 
 [#75](https://github.com/teslamotors/light-show/issues/75) is one sentence:

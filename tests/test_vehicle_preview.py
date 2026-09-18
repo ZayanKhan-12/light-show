@@ -1046,10 +1046,41 @@ class ClosureDanceTests(unittest.TestCase):
         self.assertEqual(findings[0].severity, vp.INFO)
         self.assertIn("14 s", findings[0].summary)
 
-    def test_dance_after_a_full_open_is_not_flagged(self):
+    def test_dance_well_after_a_full_open_is_not_flagged(self):
+        # 20 s after the Open, comfortably past 14 s plus the margin.
         show = closure_show({LIFTGATE: [(0, 5, OPEN_CMD),
-                                        (800, 20, DANCE_CMD)]}, step_time=20)
+                                        (1000, 20, DANCE_CMD)]}, step_time=20)
         self.assertEqual(find(vp.analyze_closures(show),
+                              "closure-dance-early"), [])
+
+    def test_a_dance_that_only_just_clears_the_open_is_still_flagged(self):
+        """Issue 128, measured.
+
+        Cyber Symphony asks the liftgate to Dance 14.5 s after its Open
+        against a documented 14 s, and an owner filmed the trunk opening,
+        stopping and closing again. The documented durations are approximate
+        -- issue 72 reports 12 s on a liftgate the table gives as 14 -- so
+        clearing them by a hair is not clearing them.
+        """
+        show = closure_show({LIFTGATE: [(0, 5, OPEN_CMD),
+                                        (725, 20, DANCE_CMD)]}, step_time=20)
+        findings = find(vp.analyze_closures(show), "closure-dance-early")
+
+        self.assertEqual(len(findings), 1)
+        self.assertIn("issues/128", findings[0].detail)
+
+    def test_the_margin_is_a_quarter_of_the_documented_movement(self):
+        # 14 s + 25% is 17.5 s: 17.4 s is flagged, 17.6 s is not.
+        def dance_at(ms):
+            frames = ms // 20
+            return closure_show({LIFTGATE: [(0, 5, OPEN_CMD),
+                                            (frames, 20, DANCE_CMD)]},
+                                frames=3000, step_time=20)
+
+        self.assertEqual(vp.DANCE_MARGIN, 0.25)
+        self.assertTrue(find(vp.analyze_closures(dance_at(17400)),
+                             "closure-dance-early"))
+        self.assertEqual(find(vp.analyze_closures(dance_at(17600)),
                               "closure-dance-early"), [])
 
     def test_each_family_uses_its_own_open_duration(self):
@@ -1181,6 +1212,23 @@ class ShippedExampleClosureTests(unittest.TestCase):
                     "{}: {} spends {} commands against a limit of {}".format(
                         name, vp.channel_name(entry.channel), entry.count,
                         entry.family.limit))
+
+    def test_cyber_symphony_liftgate_is_the_case_from_issue_128(self):
+        """The measurement behind the margin, held against the real file."""
+        path = os.path.join(
+            REPO_ROOT, "examples", "lightshow_example_5_Cyber_Symphony_4_Car",
+            "Car #1", "LightShow", "lightshow.fseq")
+        show = vp.read_fseq(path)
+        entry = next(u for u in vp.closure_usage(show) if u.channel == LIFTGATE)
+
+        opens = [r for r in entry.commands if r.percent == vp.OPEN]
+        dances = [r for r in entry.commands if r.percent == vp.DANCE]
+        gap = (dances[0].start_frame - opens[0].start_frame) * show.step_time_ms
+
+        self.assertEqual(gap, 14500)
+        self.assertGreater(gap, vp.CLOSURE_FAMILIES[LIFTGATE].open_ms)
+        self.assertTrue(find(vp.analyze_closures(show),
+                             "closure-dance-early"))
 
     def test_the_shipped_examples_trip_exactly_the_known_findings(self):
         """Two shipped shows overrun the documented closure rules.

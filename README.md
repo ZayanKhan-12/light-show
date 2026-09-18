@@ -451,7 +451,7 @@ Model 3  -  4 error(s), 7 warning(s), 19 note(s)
 | ```closure-limit-reached``` | A closure is exactly at its limit, with no room for another command. |
 | ```closure-dance-unsupported``` | A Dance request on a closure the table marks as not supporting Dance, such as the mirrors or door handles. |
 | ```closure-dance-without-open``` | A Dance request while the closure is closed. Everything except windows must be opened first. |
-| ```closure-dance-early``` | A Dance request sooner after its Open than the [movement duration](#closure_movement_durations) allows. |
+| ```closure-dance-early``` | A Dance request too soon after its Open, counting the [movement duration](#closure_movement_durations) plus a quarter for margin, because those durations are approximate. |
 | ```closure-dance-thermal``` | More than the recommended ~30 s of dancing on one closure. |
 | ```closure-commands-bunched``` | Commands close enough together to spend the budget without moving the closure much. |
 
@@ -610,6 +610,7 @@ To command a closure to move in a particular manner, place an effect with the fo
 ### Closures Command Limitations
 - All closures have actuation limits listed in the table above. Only Open, Close, and Dance count towards the actuation limits. The limits are counted separately for each individual closure.
 - With the exception of windows, closures will not honor Dance requests unless the respective closure is already in the open position. The show creator must account for this by adding a delay between Open and Dance requests. Refer to [Closure Movement Durations](#closure_movement_durations) for more information.
+    - Leave margin, not just the listed time. Those durations are approximate and vary between cars, so a Dance placed right at the end of one can arrive while the closure is still moving on a different vehicle. Owners have reported a trunk opening, stopping and closing again from a Dance that cleared the documented time by half a second ([#128](https://github.com/teslamotors/light-show/issues/128)). [vehicle_preview.py](#vehicle_preview) reports a gap with less than 25% margin.
 - The charge port door will automatically close if 2 minutes have elapsed since opening.
 - Closure commands spaced very close together (eg, 20ms) will not cause much visible movement, and will use up the command limits quickly. Leave reasonable time between commands to see the best effects.
 - To count what a finished show actually spends, run the [Vehicle Preview Script](#vehicle_preview). It prints each closure's commands against its limit and flags Dance requests a closure will not honor.
