@@ -183,6 +183,26 @@ jobs:
           print("{} closure command(s) counted across the examples.".format(spent))
           PYEOF
 
+      - name: Check every shipped cross-vehicle show
+        # Issue #64: the cars in a set have to agree. This also guards the
+        # rule that they may differ in frame interval but not in length --
+        # "The Arrival" mixes 25 ms and 50 ms cars deliberately.
+        run: |
+          set -euo pipefail
+          found=0
+          for show in examples/*/; do
+            if ! compgen -G "$show*/LightShow" > /dev/null; then continue; fi
+            found=$((found + 1))
+            echo "::group::$show"
+            python3 tools/multi_car_check.py "$show" -v --strict
+            echo "::endgroup::"
+          done
+          if [ "$found" -lt 3 ]; then
+            echo "Expected at least three cross-vehicle example sets, found $found" >&2
+            exit 1
+          fi
+          echo "Checked $found cross-vehicle show(s)."
+
       - name: Check a multi-show USB layout end to end
         # Builds the layout issue #48 asked for -- several shows side by side
         # in one LightShow folder -- out of the shipped examples, and asserts

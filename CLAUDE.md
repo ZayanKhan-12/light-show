@@ -26,6 +26,8 @@ almost every change is a change to something a car will eventually play.
 | `tools/xlights_layers.py` | Applies and verifies the two files above against the zip. |
 | `tools/vehicle_preview.py` | Reports where a `.fseq` will behave differently on a given vehicle than it does in the xLights preview. |
 | `tools/usb_check.py` | Reads a finished USB drive and reports which shows the car will list, and why any other was left out. |
+| `tools/multi_car_check.py` | Checks that the per-car shows of a cross-vehicle set agree with each other. |
+| `tools/docs_check.py` | Checks the documentation's links, file references and the community show list, without touching the network. |
 | `tests/` | `unittest` suite, standard library only. |
 | `examples/` | Example shows, distributed as zips. |
 
@@ -117,6 +119,42 @@ comment. If the code and the README disagree, that is a bug worth raising rather
 than silently picking one. Where the README is simply silent — it describes the
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
+
+### A show is channels, not pixels
+
+[#64](https://github.com/teslamotors/light-show/issues/64) asks whether the
+headlights can project an arbitrary image. They cannot, and the answer is in
+`xlights/channel_map.json` rather than in an opinion: every headlamp model is
+`Single Color White` with one node, so the finest thing a show can say about a
+headlight is how bright it is. The light bars are the opposite — `Node Single
+Color` with 60, 52 and 6 nodes — which is why pixel-level effects belong
+there. Answer this class of question from the channel map, and do not
+speculate about what the hardware could do if it were driven differently;
+that is not something this repository knows.
+
+Note also that "projector" in `README.md` is the headlamp optic type, next to
+"reflector". It has never meant image projection, and the confusion is why the
+issue was filed.
+
+### Cross-vehicle sets are kept together by length, not frame rate
+
+The other half of #64 — animation running across several parked cars — has
+shipped: `cross-vehicle-shows/README.md`, the cross-vehicle show folder, and
+three examples. Each car plays its own `.fseq`, started together by scheduling
+the show.
+
+`tools/multi_car_check.py` checks a set, and the rule it encodes is easy to
+get wrong: **what must match across cars is the total duration and the audio,
+not the frame count or the frame interval.**
+`examples/lightshow_example_3_The_Arrival_5_Car` runs cars 1 and 3 at 25 ms
+and cars 2, 4 and 5 at 50 ms, every car lasting exactly 110.25 s. A check that
+compared frame counts would call Tesla's own five-car show broken, so
+`test_different_frame_intervals_are_not_a_problem` and a test over the shipped
+sets hold that line.
+
+The export step is the reason the tool exists: it is a manual xLights
+round trip repeated once per car, five to eight times, and nothing else
+checks the result.
 
 ### The community list is a list, not a recommendation
 
