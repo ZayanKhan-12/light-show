@@ -473,6 +473,14 @@ def example_fseqs():
                 yield os.path.relpath(path, REPO_ROOT), handle.read()
 
 
+def example_label(name):
+    """Shorten an example path to "lightshow_example_N"."""
+    for part in name.replace("\\", "/").split("/"):
+        if part.startswith("lightshow_example_"):
+            return "_".join(part.split("_")[:3])
+    return name
+
+
 def example_shows():
     """Yield (label, Show) for every example show."""
     for name, blob in example_fseqs():
@@ -824,6 +832,394 @@ class ShippedExampleInteriorTests(unittest.TestCase):
             usage = vp.interior_usage(show)
             self.assertIn(len(usage), (0, len(vp.INTERIOR_SEGMENTS)))
         self.assertGreater(seen, 0)
+
+
+# --------------------------------------------------------------------------
+# Closure command budget -- https://github.com/teslamotors/light-show/issues/50
+# --------------------------------------------------------------------------
+
+# Closure command bytes, from the brightness percentages in README.md.
+OPEN_CMD = 64            # 25%, "Q"
+DANCE_CMD = 128          # 50%, "A"
+CLOSE_CMD = 191          # 75%, "Z"
+STOP_CMD = 255           # 100%, "F"
+
+LEFT_MIRROR, RIGHT_MIRROR = 35, 36
+LEFT_FRONT_WINDOW = 37
+LIFTGATE = 41
+LEFT_FRONT_HANDLE = 42
+CHARGE_PORT = 46
+LEFT_FALCON = 31
+
+
+def closure_show(events, frames=2000, step_time=20):
+    """A show whose only content is closure commands."""
+    return make_show(frames, events, step_time=step_time)
+
+
+def spaced(command, count, spacing_frames=50, start=0, length=5):
+    """`count` copies of one command, spaced apart."""
+    return [(start + i * spacing_frames, length, command)
+            for i in range(count)]
+
+
+def usage_for(show, channel):
+    return next(u for u in vp.closure_usage(show) if u.channel == channel)
+
+
+class ClosureTableTests(unittest.TestCase):
+    """The family table must match the closure table in README.md."""
+
+    def test_every_closure_channel_has_a_family(self):
+        closures = [c for c, (_, kind) in vp.CHANNELS.items()
+                    if kind == vp.CLOSURE]
+        self.assertEqual(sorted(closures), sorted(vp.CLOSURE_FAMILIES))
+
+    def test_documented_limits(self):
+        # README.md, "Command Limit Per Show".
+        expected = {
+            "Liftgate": 6, "Mirrors": 20, "Charge Port": 3, "Windows": 6,
+            "Door Handles": 20, "Front Doors": 6, "Falcon Doors": 6,
+        }
+        actual = {f.name: f.limit for f in vp.CLOSURE_FAMILIES.values()}
+        self.assertEqual(actual, expected)
+
+    def test_documented_dance_support(self):
+        # README.md, "Supports Dance?": only these four are marked Yes.
+        dancing = {f.name for f in vp.CLOSURE_FAMILIES.values() if f.dance}
+        self.assertEqual(
+            dancing, {"Liftgate", "Charge Port", "Windows", "Falcon Doors"})
+
+    def test_windows_are_the_only_exception_to_dance_needs_open(self):
+        exempt = {f.name for f in vp.CLOSURE_FAMILIES.values()
+                  if not f.dance_needs_open}
+        self.assertEqual(exempt, {"Windows"})
+
+    def test_counted_commands_come_from_the_closure_code_table(self):
+        self.assertEqual(
+            sorted(vp.COUNTED_COMMANDS),
+            sorted(percent for percent, name in vp.CLOSURE_CODES.items()
+                   if name in ("Open", "Dance", "Close")))
+        self.assertNotIn(vp.STOP, vp.COUNTED_COMMANDS)
+        self.assertNotIn(0, vp.COUNTED_COMMANDS)
+
+
+class ClosureUsageTests(unittest.TestCase):
+    def test_a_command_is_a_run_not_a_frame(self):
+        # One Dance held for 10 seconds is one actuation, not 500.
+        show = closure_show({LIFTGATE: [(0, 500, DANCE_CMD)]})
+        self.assertEqual(usage_for(show, LIFTGATE).count, 1)
+
+    def test_idle_and_stop_are_free(self):
+        show = closure_show({LIFTGATE: [(0, 10, STOP_CMD), (20, 10, 0),
+                                        (40, 10, STOP_CMD)]})
+        self.assertEqual(usage_for(show, LIFTGATE).count, 0)
+
+    def test_open_close_and_dance_all_count(self):
+        show = closure_show({LIFTGATE: [(0, 5, OPEN_CMD), (50, 5, DANCE_CMD),
+                                        (100, 5, CLOSE_CMD)]})
+        self.assertEqual(usage_for(show, LIFTGATE).count, 3)
+
+    def test_dance_time_is_measured(self):
+        show = closure_show({LIFTGATE: [(0, 5, OPEN_CMD),
+                                        (50, 100, DANCE_CMD)]},
+                            step_time=20)
+        self.assertEqual(usage_for(show, LIFTGATE).dance_ms, 2000)
+
+    def test_repeated_commands_separated_by_idle_count_separately(self):
+        show = closure_show({LEFT_MIRROR: spaced(OPEN_CMD, 4)})
+        self.assertEqual(usage_for(show, LEFT_MIRROR).count, 4)
+
+    def test_every_closure_is_reported_even_when_unused(self):
+        show = closure_show({})
+        self.assertEqual(len(vp.closure_usage(show)),
+                         len(vp.CLOSURE_FAMILIES))
+        self.assertTrue(all(u.count == 0 for u in vp.closure_usage(show)))
+
+
+class ClosureBudgetFindingTests(unittest.TestCase):
+    def test_over_the_limit_is_a_warning(self):
+        show = closure_show({CHARGE_PORT: spaced(OPEN_CMD, 5)})
+        findings = find(vp.analyze_closures(show), "closure-limit-exceeded")
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, vp.WARNING)
+        self.assertEqual(findings[0].occurrences, 2)      # 5 used, limit 3
+        self.assertIn("Charge Port", findings[0].summary)
+
+    def test_the_timestamp_points_at_the_first_command_past_the_limit(self):
+        show = closure_show({CHARGE_PORT: spaced(OPEN_CMD, 5,
+                                                 spacing_frames=50)},
+                            step_time=20)
+        finding = find(vp.analyze_closures(show), "closure-limit-exceeded")[0]
+
+        # Commands at frames 0, 50, 100, 150, 200; the fourth is the overrun.
+        self.assertEqual(finding.first_at_ms, 150 * 20)
+
+    def test_exactly_at_the_limit_is_a_note(self):
+        show = closure_show({CHARGE_PORT: spaced(OPEN_CMD, 3)})
+        findings = vp.analyze_closures(show)
+
+        self.assertEqual(find(findings, "closure-limit-exceeded"), [])
+        reached = find(findings, "closure-limit-reached")
+        self.assertEqual(len(reached), 1)
+        self.assertEqual(reached[0].severity, vp.INFO)
+
+    def test_under_the_limit_says_nothing(self):
+        show = closure_show({CHARGE_PORT: spaced(OPEN_CMD, 2)})
+        self.assertEqual(vp.analyze_closures(show), [])
+
+    def test_limits_are_counted_per_individual_closure(self):
+        # README.md: "counted separately for each individual closure". Four
+        # windows at 4 commands each is fine; one window at 8 is not.
+        fine = closure_show({c: spaced(OPEN_CMD, 4) for c in (37, 38, 39, 40)})
+        self.assertEqual(find(vp.analyze_closures(fine),
+                              "closure-limit-exceeded"), [])
+
+        over = closure_show({LEFT_FRONT_WINDOW: spaced(OPEN_CMD, 8)})
+        self.assertEqual(len(find(vp.analyze_closures(over),
+                                  "closure-limit-exceeded")), 1)
+
+    def test_mirrors_have_a_larger_budget_than_the_charge_port(self):
+        show = closure_show({LEFT_MIRROR: spaced(OPEN_CMD, 5),
+                             CHARGE_PORT: spaced(OPEN_CMD, 5)})
+        over = find(vp.analyze_closures(show), "closure-limit-exceeded")
+
+        self.assertEqual([f.channels for f in over], [(CHARGE_PORT,)])
+
+
+class ClosureDanceTests(unittest.TestCase):
+    def test_dance_on_a_closure_that_cannot_dance_is_a_warning(self):
+        """The reporter's mirrors on a Model 3: README marks Mirrors "-"."""
+        show = closure_show({LEFT_MIRROR: [(0, 20, DANCE_CMD)]})
+        findings = find(vp.analyze_closures(show),
+                        "closure-dance-unsupported")
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, vp.WARNING)
+        self.assertIn("Mirrors", findings[0].detail)
+
+    def test_door_handles_and_front_doors_also_cannot_dance(self):
+        for channel in (LEFT_FRONT_HANDLE, 33):
+            show = closure_show({channel: [(0, 20, DANCE_CMD)]})
+            self.assertEqual(
+                len(find(vp.analyze_closures(show),
+                         "closure-dance-unsupported")), 1,
+                vp.channel_name(channel))
+
+    def test_a_dancing_closure_is_not_flagged(self):
+        show = closure_show({LIFTGATE: [(0, 5, OPEN_CMD),
+                                        (800, 20, DANCE_CMD)]})
+        self.assertEqual(find(vp.analyze_closures(show),
+                              "closure-dance-unsupported"), [])
+
+    def test_dance_while_closed_is_a_warning(self):
+        show = closure_show({LIFTGATE: [(0, 20, DANCE_CMD)]})
+        findings = find(vp.analyze_closures(show),
+                        "closure-dance-without-open")
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, vp.WARNING)
+
+    def test_a_close_puts_the_closure_back_in_the_closed_state(self):
+        show = closure_show({LIFTGATE: [(0, 5, OPEN_CMD),
+                                        (800, 5, CLOSE_CMD),
+                                        (1000, 20, DANCE_CMD)]})
+        self.assertEqual(len(find(vp.analyze_closures(show),
+                                  "closure-dance-without-open")), 1)
+
+    def test_windows_may_dance_without_opening_first(self):
+        # README.md: "With the exception of windows".
+        show = closure_show({LEFT_FRONT_WINDOW: [(0, 20, DANCE_CMD)]})
+        findings = vp.analyze_closures(show)
+
+        self.assertEqual(find(findings, "closure-dance-without-open"), [])
+        self.assertEqual(find(findings, "closure-dance-early"), [])
+
+    def test_dance_too_soon_after_open_is_a_note(self):
+        # The liftgate takes about 14 s to open; dance after 2 s.
+        show = closure_show({LIFTGATE: [(0, 5, OPEN_CMD),
+                                        (100, 20, DANCE_CMD)]}, step_time=20)
+        findings = find(vp.analyze_closures(show), "closure-dance-early")
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, vp.INFO)
+        self.assertIn("14 s", findings[0].summary)
+
+    def test_dance_after_a_full_open_is_not_flagged(self):
+        show = closure_show({LIFTGATE: [(0, 5, OPEN_CMD),
+                                        (800, 20, DANCE_CMD)]}, step_time=20)
+        self.assertEqual(find(vp.analyze_closures(show),
+                              "closure-dance-early"), [])
+
+    def test_each_family_uses_its_own_open_duration(self):
+        # Falcon doors take about 20 s; 15 s is too soon for them.
+        show = closure_show({LEFT_FALCON: [(0, 5, OPEN_CMD),
+                                           (750, 20, DANCE_CMD)]},
+                            step_time=20)
+        self.assertEqual(len(find(vp.analyze_closures(show),
+                                  "closure-dance-early")), 1)
+
+    def test_long_dances_hit_the_thermal_note(self):
+        # README.md recommends ~30 s or less of dancing per show.
+        show = closure_show({LIFTGATE: [(0, 5, OPEN_CMD),
+                                        (800, 1700, DANCE_CMD)]},
+                            frames=3000, step_time=20)
+        findings = find(vp.analyze_closures(show), "closure-dance-thermal")
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, vp.INFO)
+
+    def test_a_short_dance_does_not(self):
+        show = closure_show({LIFTGATE: [(0, 5, OPEN_CMD),
+                                        (800, 100, DANCE_CMD)]})
+        self.assertEqual(find(vp.analyze_closures(show),
+                              "closure-dance-thermal"), [])
+
+
+class ClosureSpacingTests(unittest.TestCase):
+    def test_commands_bunched_together_are_noted(self):
+        show = closure_show({CHARGE_PORT: [(0, 2, OPEN_CMD),
+                                           (2, 2, CLOSE_CMD)]}, step_time=20)
+        findings = find(vp.analyze_closures(show),
+                        "closure-commands-bunched")
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, vp.INFO)
+        self.assertIn("40 ms apart", findings[0].detail)
+
+    def test_well_spaced_commands_are_not(self):
+        show = closure_show({CHARGE_PORT: spaced(OPEN_CMD, 3,
+                                                 spacing_frames=100)})
+        self.assertEqual(find(vp.analyze_closures(show),
+                              "closure-commands-bunched"), [])
+
+    def test_the_threshold_is_declared_as_a_judgement(self):
+        show = closure_show({CHARGE_PORT: [(0, 2, OPEN_CMD),
+                                           (2, 2, CLOSE_CMD)]})
+        finding = find(vp.analyze_closures(show),
+                       "closure-commands-bunched")[0]
+        self.assertIn("judgement", finding.detail)
+
+
+class ClosureReportingTests(unittest.TestCase):
+    def test_the_budget_table_shows_used_and_limit(self):
+        show = closure_show({CHARGE_PORT: spaced(OPEN_CMD, 2)})
+        text = vp.render_report(show, {"models": []}, verbose=False,
+                                closures=vp.analyze_closures(show))
+
+        self.assertIn("Closure command budget", text)
+        self.assertIn("Charge Port", text)
+        self.assertIn("2 / 3", text)
+
+    def test_unused_closures_are_hidden_unless_verbose(self):
+        show = closure_show({CHARGE_PORT: spaced(OPEN_CMD, 2)})
+        findings = vp.analyze_closures(show)
+
+        self.assertNotIn("Liftgate", vp.render_report(
+            show, {"models": []}, False, closures=findings))
+        self.assertIn("Liftgate", vp.render_report(
+            show, {"models": []}, True, closures=findings))
+
+    def test_a_show_without_closures_says_so(self):
+        show = closure_show({})
+        text = vp.render_report(show, {"models": []}, False,
+                                closures=vp.analyze_closures(show))
+        self.assertIn("does not move any closure", text)
+
+    def test_over_limit_is_marked_in_the_table(self):
+        show = closure_show({CHARGE_PORT: spaced(OPEN_CMD, 5)})
+        text = vp.render_report(show, {"models": []}, False,
+                                closures=vp.analyze_closures(show))
+        self.assertIn("over by 2", text)
+
+    def test_report_without_closures_is_unchanged(self):
+        show = closure_show({CHARGE_PORT: spaced(OPEN_CMD, 2)})
+        self.assertNotIn("Closure command budget",
+                         vp.render_report(show, {"models": []}, True))
+
+
+class ClosureCommandLineTests(InteriorCommandLineTests):
+    def test_json_carries_the_closure_budget(self):
+        path = self.write_show(closure_show({CHARGE_PORT: spaced(OPEN_CMD, 5)}))
+        code, out = self.run_main(path, "--vehicle", "models", "--json")
+        payload = json.loads(out)
+
+        self.assertEqual(code, 0)
+        budget = {b["name"]: b for b in payload["closures"]["budget"]}
+        self.assertEqual(budget["Charge Port"]["commands"], 5)
+        self.assertEqual(budget["Charge Port"]["limit"], 3)
+        self.assertEqual(budget["Charge Port"]["over_by"], 2)
+        self.assertIn("closure-limit-exceeded",
+                      [f["code"] for f in payload["closures"]["findings"]])
+
+    def test_strict_fails_on_an_exceeded_limit(self):
+        path = self.write_show(closure_show({CHARGE_PORT: spaced(OPEN_CMD, 5)}))
+        self.assertEqual(self.run_main(path, "--vehicle", "models")[0], 0)
+        self.assertEqual(
+            self.run_main(path, "--vehicle", "models", "--strict")[0], 1)
+
+
+class ShippedExampleClosureTests(unittest.TestCase):
+    """Real shows keep the counting rule honest.
+
+    If commands were counted per frame rather than per effect, every one of
+    these shows would blow past its limits.
+    """
+
+    def test_counting_is_per_effect_not_per_frame(self):
+        """The strongest guard on the counting rule.
+
+        A closure effect held for seconds is one actuation. If these were
+        counted per frame instead, every one of these shows would be hundreds
+        of commands past its limit rather than within a command or two of it.
+        """
+        for name, show in example_shows():
+            for entry in vp.closure_usage(show):
+                self.assertLessEqual(
+                    entry.count, entry.family.limit + 2,
+                    "{}: {} spends {} commands against a limit of {}".format(
+                        name, vp.channel_name(entry.channel), entry.count,
+                        entry.family.limit))
+
+    def test_the_shipped_examples_trip_exactly_the_known_findings(self):
+        """Two shipped shows overrun the documented closure rules.
+
+        Both were found by this check and are left as they are; the point of
+        the test is that the rules fire on real files, and that the list does
+        not grow silently.
+
+        - lightshow_example_2 places one Dance on a door handle, which
+          README.md marks as not supporting Dance.
+        - lightshow_example_5 spends 4 charge port commands against a
+          documented limit of 3.
+        """
+        warnings = [(example_label(name), f.code)
+                    for name, show in example_shows()
+                    for f in vp.analyze_closures(show)
+                    if f.severity == vp.WARNING]
+
+        self.assertEqual(set(warnings), {
+            ("lightshow_example_2", "closure-dance-unsupported"),
+            ("lightshow_example_5", "closure-limit-exceeded"),
+        })
+        # Cyber Symphony ships one file per car, and all four overrun.
+        self.assertEqual(
+            sum(1 for _, code in warnings
+                if code == "closure-limit-exceeded"), 4)
+
+    def test_the_examples_do_spend_closure_commands(self):
+        totals = {name: sum(u.count for u in vp.closure_usage(show))
+                  for name, show in example_shows()}
+        self.assertTrue(any(totals.values()),
+                        "no shipped example moves a closure")
+
+    def test_at_least_one_example_sits_at_a_limit(self):
+        # lightshow_example_3 uses all 20 mirror commands on each mirror.
+        at_limit = [name for name, show in example_shows()
+                    if find(vp.analyze_closures(show),
+                            "closure-limit-reached")]
+        self.assertTrue(at_limit, "expected a show at a documented limit")
 
 
 if __name__ == "__main__":

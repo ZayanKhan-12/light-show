@@ -151,6 +151,45 @@ What makes them different from every other channel in the file:
 - **Only a 200-channel export has them.** A 48-channel show has no interior
   data at all, which is what `interior-not-in-export` says.
 
+### Closures have a budget; lights no longer do
+
+[#50](https://github.com/teslamotors/light-show/issues/50) was filed when a
+show overran the old whole-show command limit — the reporter saw "more than
+241%". That number came from `validator.py` itself, which used to carry
+`MEMORY_LIMIT = 681` and count state changes in four buckets per frame. It was
+raised to 3500 and then removed; `README.md`, "General Limitations of Custom
+Shows" now says the command limit is gone. Do not resurrect it.
+
+What did not go away is the per-closure actuation limit in the "Closures
+channels" table, and `analyze_closures()` in `tools/vehicle_preview.py` counts
+against it. The rules, all from `README.md`:
+
+- **Only Open, Close and Dance count**, and the limits are "counted separately
+  for each individual closure" — each of the four windows has its own 6, not a
+  shared one. `COUNTED_COMMANDS` is derived from `CLOSURE_CODES` so the
+  percentages cannot drift apart.
+- **A command is an effect, not a frame.** One Dance held for ten seconds is
+  one actuation. Counting frames instead would put every shipped example
+  hundreds of commands over its limit, which is what
+  `test_counting_is_per_effect_not_per_frame` exists to catch.
+- **Dance is not universal.** Mirrors, door handles and front doors are marked
+  "-" in the "Supports Dance?" column; a Dance there does nothing, which is
+  what the issue's reporter hit on a Model 3.
+- **Dance needs an open closure, windows excepted**, and the open takes the
+  time given in "Closure Movement Durations" — 14 s for a liftgate, 22 s for
+  front doors.
+- **Two shipped examples already break these rules**, and the tests record
+  that rather than hiding it: `lightshow_example_2` dances a door handle, and
+  `lightshow_example_5` spends 4 charge port commands against a limit of 3.
+  If you change the counting, that list is what tells you whether you changed
+  the meaning.
+
+Severity here follows the documentation's own confidence. A hard limit being
+exceeded is a `WARNING`; the timing rules are `INFO`, because the movement
+durations are documented as approximate and shipped shows do cut them fine.
+The 100 ms bunching threshold is this tool's judgement and says so in its own
+detail text — the README only offers 20 ms as an example.
+
 ## The drive is an interface too
 
 The car finds custom shows by convention, not by a manifest: every `.fseq` at
