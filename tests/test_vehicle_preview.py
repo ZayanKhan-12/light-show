@@ -358,6 +358,54 @@ class HardwareTests(unittest.TestCase):
             self.assertEqual(findings, [], key)
 
 
+class FirstLightTests(unittest.TestCase):
+    """Issue 78: telling "the lights start late" from "the file starts dark"."""
+
+    def test_a_show_that_starts_lit_reports_zero(self):
+        show = make_show(100, {LEFT_FRONT_TURN: [(0, 10, ON_INSTANT)]})
+        self.assertEqual(show.first_lit_ms(), 0)
+
+    def test_leading_darkness_is_measured(self):
+        show = make_show(100, {LEFT_FRONT_TURN: [(50, 10, ON_INSTANT)]},
+                         step_time=20)
+        self.assertEqual(show.first_lit_ms(), 1000)
+
+    def test_a_show_that_is_never_lit_reports_nothing(self):
+        self.assertIsNone(make_show(100, {}).first_lit_ms())
+
+    def test_any_channel_counts_including_closures(self):
+        show = make_show(100, {41: [(25, 10, 64)]}, step_time=20)
+        self.assertEqual(show.first_lit_ms(), 500)
+
+    def test_the_arrival_starts_dark_on_purpose(self):
+        """The reason this is reported and not flagged.
+
+        Tesla's featured five-car show is dark for its first 5.3 s while the
+        track opens, so leading darkness cannot be treated as a fault.
+        """
+        for name, show in example_shows():
+            if example_label(name) == "lightshow_example_3":
+                self.assertGreater(show.first_lit_ms(), 5000)
+                return
+        self.fail("lightshow_example_3 was not found")
+
+    def test_the_report_states_it_when_there_is_any(self):
+        show = make_show(100, {LEFT_FRONT_TURN: [(50, 10, ON_INSTANT)]},
+                         step_time=20)
+        text = vp.render_report(show, {"models": []}, verbose=False)
+
+        self.assertIn("First light at 0:01.000", text)
+
+    def test_the_report_stays_quiet_when_the_show_starts_lit(self):
+        show = make_show(100, {LEFT_FRONT_TURN: [(0, 10, ON_INSTANT)]})
+        self.assertNotIn("First light",
+                         vp.render_report(show, {"models": []}, False))
+
+    def test_a_show_with_nothing_in_it_says_so(self):
+        text = vp.render_report(make_show(100, {}), {"models": []}, False)
+        self.assertIn("Nothing in this show is ever lit.", text)
+
+
 class ReportingTests(unittest.TestCase):
     def test_findings_are_ordered_by_severity(self):
         show = make_show(200, {

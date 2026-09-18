@@ -253,6 +253,23 @@ jobs:
           print("{} show(s) can reach the cabin, {} drive it.".format(reached, lit))
           PYEOF
 
+      - name: Report when each example first lights up
+        # Issue #78: "the lights start late" needs a measurement to argue
+        # with. Leading darkness is normal -- The Arrival opens with 5.3 s of
+        # it -- so this is printed, never failed on.
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import glob, sys
+          sys.path.insert(0, "tools")
+          import vehicle_preview as vp
+          for path in sorted(glob.glob("examples/**/*.fseq", recursive=True)):
+              show = vp.read_fseq(path)
+              first = show.first_lit_ms()
+              print("{:64s} first light {}".format(
+                  path[-64:], "never" if first is None else "%d ms" % first))
+          PYEOF
+
       - name: Report Model X pinch risk in every example
         # Issue #77: a window moving while a Model X door is still moving can
         # stop the show. The two older examples do it; this step keeps that

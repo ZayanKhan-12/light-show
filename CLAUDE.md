@@ -123,6 +123,31 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### Report the fact; do not invent the fault
+
+[#78](https://github.com/teslamotors/light-show/issues/78) is a show whose
+music runs ahead of its lights. A repository contributor gave the documented
+answer -- the audio must be 44.1 kHz -- and three more owners replied that
+theirs already was. The thread then collects guesses, including a rename
+ritual and the Dance Moves checkbox.
+
+`usb_check.py` already checks the two causes this repository can speak to, the
+sample rate and a length mismatch between the sequence and its audio. What was
+missing was the third question an owner needs answered: **when does this show
+actually start?**
+
+`Show.first_lit_ms()` answers it, and it is deliberately *not* a finding.
+"The Arrival" in `examples/` is dark for its first 5.3 s while the track
+opens, so leading darkness is normal and flagging it would call Tesla's
+featured show broken. Printed as a fact it does the useful work either way:
+it explains a delay that matches, and it rules the file out when the delay
+does not.
+
+That is the general shape for a symptom nobody here can reproduce: **check
+what is checkable, print the measurement that discriminates, and attribute the
+rest.** The Dance Moves reports are in `README.md` as owner reports with no
+mechanism claimed, because this repository does not know one.
+
 ### Check the shipped shows before deciding a report is unreproducible
 
 [#77](https://github.com/teslamotors/light-show/issues/77) says a Model X

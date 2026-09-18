@@ -196,6 +196,21 @@ These come from xLights rather than from the vehicle. xLights bugs belong in the
 
 To check a sequence before exporting it, run [sequence_check.py](#sequence_check).
 
+### <a name="out_of_sync"></a>When the music and the lights are out of sync
+Work through these in order; the first two are checked for you by [usb_check.py](#usb_check).
+
+1. **The audio must be 44.1 kHz.** A 48 kHz file drifts against the lights. This is the most common cause by a distance, and `usb_check.py` reports it as ```AUDIO_SAMPLE_RATE```.
+2. **The sequence and the audio should be the same length.** If one of them was trimmed after the show was built, the music and the lights start at different points in the track, which looks exactly like a fixed offset. `usb_check.py` reports this as ```LENGTH_MISMATCH```.
+3. **Check when the show's first effect actually is.** A show can begin with darkness on purpose - "The Arrival" in [examples/](examples) is dark for its first 5.3 seconds - so lights that appear late are not always late. [vehicle_preview.py](#vehicle_preview) prints `First light at ...` for any show, which either explains the delay or rules the file out:
+
+    ```
+    python3 tools/vehicle_preview.py lightshow.fseq --vehicle model3
+    4410 frames, 25 ms per frame, total duration 1:50.250.
+    First light at 0:05.275; the show is dark before that.
+    ```
+
+Owners have also reported that a show which drifts with **Dance Moves** enabled plays in sync with it switched off ([#78](https://github.com/teslamotors/light-show/issues/78)). No mechanism for that is documented here, and it is worth saying on the issue if you can reproduce it, including which vehicle and software version.
+
 ### <a name="not_showing_up"></a>When something does not show up in xLights
 **The audio file is not in the list when creating a sequence.** Two reasons, in order of likelihood:
 
