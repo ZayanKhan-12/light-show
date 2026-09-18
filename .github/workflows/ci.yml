@@ -120,6 +120,25 @@ jobs:
           fi
           echo "Analysed $found example show(s)."
 
+      - name: Check every shipped xLights sequence
+        # Issue #66: a sequence with no timing marks is the state that
+        # produces the "Graphics Driver Problem" dialog. None of the shipped
+        # sequences should be in it.
+        run: |
+          set -euo pipefail
+          found=0
+          while IFS= read -r sequence; do
+            found=$((found + 1))
+            echo "::group::$sequence"
+            python3 tools/sequence_check.py "$sequence" -v
+            echo "::endgroup::"
+          done < <(find examples -name '*.xsq' | sort)
+          if [ "$found" -eq 0 ]; then
+            echo "No .xsq sequences were found" >&2
+            exit 1
+          fi
+          echo "Checked $found sequence(s)."
+
       - name: Check the documentation's links
         # Issue #62: the community show list grows by request, so its shape is
         # checked mechanically. Nothing here touches the network.

@@ -28,6 +28,7 @@ almost every change is a change to something a car will eventually play.
 | `tools/usb_check.py` | Reads a finished USB drive and reports which shows the car will list, and why any other was left out. |
 | `tools/multi_car_check.py` | Checks that the per-car shows of a cross-vehicle set agree with each other. |
 | `tools/docs_check.py` | Checks the documentation's links, file references and the community show list, without touching the network. |
+| `tools/sequence_check.py` | Reads a saved xLights `.xsq` and reports what will get in the way later. |
 | `tests/` | `unittest` suite, standard library only. |
 | `examples/` | Example shows, distributed as zips. |
 
@@ -119,6 +120,45 @@ comment. If the code and the README disagree, that is a bug worth raising rather
 than silently picking one. Where the README is simply silent — it describes the
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
+
+### Not every error here is ours, and not every title is true
+
+[#66](https://github.com/teslamotors/light-show/issues/66) is an owner who
+spent a year updating graphics drivers and logging Windows out and back in,
+because xLights titles one of its warnings "Graphics Driver Problem". The
+message underneath it — "Paste By Cell information missing. You can only
+Paste By Time with this data" — is the real one, and the cause is that
+pasting by cell needs the cells a timing track's marks create.
+
+Two habits come out of that:
+
+- **Quote the string from the screen, verbatim.** `PASTE_BY_CELL_DIALOG` holds
+  the whole sentence so that pasting it into a search reaches the
+  explanation, and a test asserts it stays in the finding. The same reason
+  `VEHICLE_ERROR` exists in `validator.py`.
+- **Say when a title is wrong.** The finding states outright that the graphics
+  driver has nothing to do with it. Repeating a misleading label politely is
+  how someone loses a year to it.
+
+The root cause was ours, though: `README.md` never introduced timing tracks at
+all, while `cross-vehicle-shows/README.md` told people to right-click one. A
+reader following the guide end to end never made a timing track, then pasted
+by cell. That gap is filled, and the xLights error table sits next to it.
+
+`tools/sequence_check.py` reads the `.xsq`. Things to keep in mind:
+
+- **An `.xsq` is xLights' file, not the vehicle's.** Nothing in this tool is a
+  claim about what the car will play; `validator.py` owns that, and the tool
+  says so when handed the wrong file. Its checks are the ones traceable to
+  `README.md`: the 15-100 ms frame interval, the 4 hour limit, audio on a
+  musical sequence, and the timing marks above.
+- **What it deliberately does not check** is whether the models a sequence
+  uses still exist in the show folder. That depends on which folder the
+  sequence was built in — the cross-vehicle folder has entirely different
+  model names — so the check would fire on correct sequences. The
+  "Sequence Element Mismatch" row in the README covers it in prose instead.
+- **xLights bugs go to xLights.** A repo Contributor said so on #66 and was
+  right; the README says it too, with a link to their tracker.
 
 ### The vehicle's error messages are the repository's problem
 
