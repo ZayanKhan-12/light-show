@@ -226,12 +226,26 @@ is the argument against that call, so they are in now:
   before an issue is opened at all — looking for a show to download, something
   the car does, something xLights does. A title like "stranger things" most
   likely wanted the first of those.
-- **Blank issues stay enabled.** Turning them off pushes anyone who does not
-  fit a template into picking the wrong one, which is worse than an empty
-  issue.
-- **Both templates ask for `diagnose.py` output**, because that is the single
-  thing that makes a report actionable, and the vehicle one asks for the
-  software version.
+- **Blank issues were left enabled, and then turned off.** The reasoning was
+  that forcing a choice pushes anyone who does not fit a template into picking
+  the wrong one. Then
+  [#115](https://github.com/teslamotors/light-show/issues/115) arrived the same
+  way — a title, no body — and two empty issues outweigh a hypothetical
+  misfiled one, especially with contact links covering the cases the forms do
+  not. Changed on the evidence rather than defended.
+- **Both forms ask for `diagnose.py` output**, because that is the single
+  thing that makes a report actionable, and the vehicle one requires the model
+  and the software version.
+- **They are issue *forms*, not markdown templates.** A markdown template is a
+  suggestion: the body can be deleted, which is what #110 and #115 both did.
+  A form with `required: true` cannot be submitted empty. That is the whole
+  difference, and it is why the first version was not enough.
+
+Converting them to YAML broke something quietly: `docs_check.py` walks
+markdown, so the commands inside the forms stopped being checked the moment
+they stopped being `.md`. `issue_template_files()` puts them back under
+`check_commands()` — the forms are mostly commands, and they are the last
+place anyone would notice a renamed tool.
 
 One check came out of writing them. Documented commands live in code fences,
 so no link checker sees them, and renaming a tool would leave the docs and the

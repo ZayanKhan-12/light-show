@@ -1,0 +1,32 @@
+name: Something in this repository
+description: The xLights project folder, the examples, the scripts or the documentation
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        For the car itself, or for xLights, use the links on the previous
+        screen instead. CONTRIBUTING.md explains which is which.
+  - type: textarea
+    id: what-is-wrong
+    attributes:
+      label: What is wrong
+      description: Which file, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: how-to-see-it
+    attributes:
+      label: How to see it
+      description: The steps, or the command you ran and its output.
+    validations:
+      required: true
+  - type: textarea
+    id: checker-output
+    attributes:
+      label: Checker output, if a show or a drive is involved
+      description: >-
+        python3 tools/diagnose.py /Volumes/YOURDRIVE, or
+        python3 tools/diagnose.py yourshow.fseq
+      render: text
+    validations:
+      required: false
