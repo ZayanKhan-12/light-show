@@ -118,6 +118,44 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### Which car, and which build of it
+
+[#52](https://github.com/teslamotors/light-show/issues/52) asks for a 2020
+Model X to be supported. It is not: `README.md`, "Supported Vehicles" lists
+Model S and Model X from 2021 onwards. Playing a custom show is a vehicle
+capability, so no change to a show file, a drive or this repository can grant
+it, and a request to add a vehicle is a decision for the maintainers rather
+than something to implement. Say that plainly instead of looking for a
+workaround.
+
+What this repository can keep honest is the boundary itself:
+
+- **The supported list has one home.** `test_tool_profiles_match_the_readme_list`
+  asserts the labels in `VEHICLES` are exactly the vehicle bullets under
+  "Supported Vehicles". Adding a vehicle means editing the README and adding a
+  profile in the same change, and the test fails until both are done.
+- **Model year is part of the label.** "Model S (2021+)" and
+  "Model X (2021+)" carry the boundary a reader needs; do not shorten them.
+
+Below the model is the build. The README describes cars that are wired
+differently within one model — "Model 3 built before October 2020", "Model 3
+Standard Range +", North America fitments — and an owner calls all of them a
+Model 3. `BuildVariant` states only the differences and
+`analyze_variants()` reports **only what the base report does not already
+say**, so an owner of an older car sees the handful of things that are true
+for them rather than a second copy of the whole report.
+
+- **Variants do not inherit.** `_MODEL_Y` is built with
+  `dataclasses.replace(_MODEL_3, ...)`, so a variant added to Model 3 reaches
+  Model Y unless it is cleared. The README documents the tail light rule for
+  Model 3 only, and a test holds Model Y to an empty variant list.
+- **`SLAVED` is not `ABSENT`.** On a pre-October-2020 Model 3 the license
+  plate lamp is fitted and lit — it just follows the tail lights, so its own
+  channel does nothing. Reporting it as "not fitted" would contradict the
+  README, which says the lamp activates with `(Left tail || Right tail)`.
+- **A variant cites the README section it comes from**, and a test asserts
+  that section still exists in the file.
+
 ### The interior is a different kind of channel
 
 The cabin lights are the answer to

@@ -201,6 +201,7 @@ BOOLEAN = "boolean"     # snaps between off and on
 RAMPING = "ramping"     # honours the ramp codes above
 FULL = "full"           # arbitrary brightness setpoint
 ABSENT = "absent"       # no such light on this vehicle
+SLAVED = "slaved"       # the light exists but follows another channel
 
 
 @dataclasses.dataclass
@@ -210,6 +211,26 @@ class OrGroup:
     name: str
     channels: Tuple[int, ...]
     readme: str
+
+
+@dataclasses.dataclass
+class BuildVariant:
+    """A build of a vehicle that is wired differently from the rest.
+
+    README.md documents these by build date or option rather than by model --
+    "Model 3 built before October 2020" is a different car to the tool even
+    though the owner calls it a Model 3.  A variant states only its
+    differences; everything else comes from the parent profile.
+    """
+
+    key: str
+    label: str
+    readme: str
+    # Applied on top of the parent profile.
+    kinds: Dict[int, str] = dataclasses.field(default_factory=dict)
+    or_groups: Tuple["OrGroup", ...] = ()
+    notes: Tuple[str, ...] = ()
+    slaved: Dict[int, str] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass
@@ -224,6 +245,18 @@ class VehicleProfile:
     # channel -> the configuration in which the light is missing
     optional_hardware: Dict[int, str] = dataclasses.field(default_factory=dict)
     notes: Tuple[str, ...] = ()
+    # Builds of this vehicle that behave differently, see BuildVariant.
+    variants: Tuple[BuildVariant, ...] = ()
+    # channel -> what drives the light instead, for SLAVED channels
+    slaved: Dict[int, str] = dataclasses.field(default_factory=dict)
+
+
+def _merge_text(*maps: Dict[int, str]) -> Dict[int, str]:
+    """Same as _merge; named apart so the intent at each call site is clear."""
+    merged: Dict[int, str] = {}
+    for entry in maps:
+        merged.update(entry)
+    return merged
 
 
 def _merge(*maps: Dict[int, str]) -> Dict[int, str]:
@@ -286,6 +319,30 @@ _MODEL_X = dataclasses.replace(
     ),
 )
 
+# README.md, "Tail lights and License Plate Lights": on Model 3 built before
+# October 2020 the left tail, right tail and license plate lights operate
+# together, driven by (Left tail || Right tail), and the License Plate channel
+# has no effect at all.  The README names Model 3 only, so this is not applied
+# to Model Y.
+_MODEL_3_PRE_OCT_2020 = BuildVariant(
+    key="pre-oct-2020",
+    label="Model 3 built before October 2020",
+    readme="Tail lights and License Plate Lights",
+    kinds={30: SLAVED},
+    slaved={30: "the tail lights"},
+    or_groups=(
+        OrGroup(
+            "Left tail + right tail (also drives the license plate lights)",
+            (26, 27),
+            "Tail lights and License Plate Lights",
+        ),
+    ),
+    notes=(
+        "The License Plate channel has no effect on this build; the license "
+        "plate lights follow the tail lights instead.",
+    ),
+)
+
 _MODEL_3 = VehicleProfile(
     key="model3",
     label="Model 3",
@@ -323,6 +380,7 @@ _MODEL_3 = VehicleProfile(
         "license plate lights operate together, and the License Plate channel "
         "has no effect at all.",
     ),
+    variants=(_MODEL_3_PRE_OCT_2020,),
 )
 
 _MODEL_Y = dataclasses.replace(
@@ -335,6 +393,8 @@ _MODEL_Y = dataclasses.replace(
         29: "North America vehicles (rear fog is a non-North America fitment)",
     }),
     notes=(),
+    # The tail light rule above is documented for Model 3 only.
+    variants=(),
 )
 
 _CYBERTRUCK = VehicleProfile(
@@ -757,7 +817,21 @@ def _check_absent_channels(
         if not any(series):
             continue
         first_on = next(i for i, v in enumerate(series) if v)
-        if kind_of(profile, channel) == ABSENT:
+        if kind_of(profile, channel) == SLAVED:
+            findings.append(Finding(
+                severity=INFO,
+                code="channel-has-no-effect",
+                summary="{} has no effect on {}".format(
+                    channel_name(channel), profile.label),
+                detail=(
+                    "The light is fitted, but on this build it follows {by} "
+                    "rather than its own channel, so driving it here changes "
+                    "nothing. Sequence {by} instead."
+                ).format(by=profile.slaved.get(channel, "another channel")),
+                channels=(channel,),
+                first_at_ms=_timestamp(first_on, show.step_time_ms),
+            ))
+        elif kind_of(profile, channel) == ABSENT:
             findings.append(Finding(
                 severity=INFO,
                 code="channel-not-present",
@@ -1308,6 +1382,45 @@ def analyze_interior(show: Show) -> List[Finding]:
     return findings
 
 
+def variant_profile(profile: VehicleProfile,
+                    variant: BuildVariant) -> VehicleProfile:
+    """The parent profile with the variant's differences applied."""
+    return dataclasses.replace(
+        profile,
+        key="{}:{}".format(profile.key, variant.key),
+        label=variant.label,
+        kinds=_merge(profile.kinds, variant.kinds),
+        or_groups=profile.or_groups + variant.or_groups,
+        notes=variant.notes,
+        variants=(),
+        slaved=_merge_text(profile.slaved, variant.slaved),
+    )
+
+
+def _finding_key(finding: Finding) -> Tuple:
+    return (finding.code, finding.channels, finding.first_at_ms)
+
+
+def analyze_variants(
+    show: Show, profile: VehicleProfile
+) -> List[Tuple[BuildVariant, List[Finding]]]:
+    """What each documented build adds to the base vehicle's report.
+
+    Only the difference is returned. An owner of one of these builds needs to
+    know what is true for them and not for the rest of the range; repeating
+    the whole report for each build would bury it.
+    """
+    if not profile.variants:
+        return []
+    base = {_finding_key(f) for f in analyze(show, profile)}
+    out: List[Tuple[BuildVariant, List[Finding]]] = []
+    for variant in profile.variants:
+        extra = [f for f in analyze(show, variant_profile(profile, variant))
+                 if _finding_key(f) not in base]
+        out.append((variant, extra))
+    return out
+
+
 def analyze(show: Show, profile: VehicleProfile) -> List[Finding]:
     """Return everything about this show that will surprise the author."""
     findings: List[Finding] = []
@@ -1433,9 +1546,23 @@ def render_closures(usage: List[ClosureUsage], findings: List[Finding],
     return out
 
 
+def _render_vehicle_finding(finding: Finding, indent: str = "  ") -> List[str]:
+    out = ["{}[{}] {} at {}".format(
+        indent, _MARKERS[finding.severity], finding.code,
+        _format_time(finding.first_at_ms))]
+    out.append(_wrap(finding.summary, 76, indent + "  "))
+    out.append(_wrap(finding.detail, 76, indent + "    "))
+    if finding.channels:
+        out.append(indent + "    channels: " + ", ".join(
+            "{} ({})".format(channel_name(c), c) for c in finding.channels))
+    return out
+
+
 def render_report(show: Show, results: Dict[str, List[Finding]], verbose: bool,
                   interior: Optional[List[Finding]] = None,
-                  closures: Optional[List[Finding]] = None) -> str:
+                  closures: Optional[List[Finding]] = None,
+                  builds: Optional[Dict[str, List[Tuple[
+                      BuildVariant, List[Finding]]]]] = None) -> str:
     out: List[str] = []
     out.append("{} frames, {} ms per frame, total duration {}.".format(
         show.frame_count, show.step_time_ms, _format_time(show.duration_ms)))
@@ -1460,18 +1587,29 @@ def render_report(show: Show, results: Dict[str, List[Finding]], verbose: bool,
             if finding.severity == INFO and not verbose:
                 continue
             out.append("")
-            out.append("  [{}] {} at {}".format(
-                _MARKERS[finding.severity], finding.code,
-                _format_time(finding.first_at_ms)))
-            out.append(_wrap(finding.summary, 76, "    "))
-            out.append(_wrap(finding.detail, 76, "      "))
-            if finding.channels:
-                out.append("      channels: " + ", ".join(
-                    "{} ({})".format(channel_name(c), c) for c in finding.channels))
+            out.extend(_render_vehicle_finding(finding))
         if infos and not verbose:
             out.append("")
             out.append("  {} vehicle-configuration note(s) hidden; re-run with "
                        "-v to see them.".format(infos))
+        for variant, extra in (builds or {}).get(key, ()):
+            shown = [f for f in extra if verbose or f.severity != INFO]
+            if not extra:
+                continue
+            out.append("")
+            out.append("  Also on {}:".format(variant.label))
+            out.append("  " + "-" * 70)
+            for finding in shown:
+                out.append("")
+                out.extend(_render_vehicle_finding(finding, indent="    "))
+            hidden = len(extra) - len(shown)
+            if hidden:
+                out.append("")
+                out.append("    {} note(s) hidden; re-run with -v to see "
+                           "them.".format(hidden))
+            out.append("")
+            out.append(_wrap(
+                "See README.md, \"{}\".".format(variant.readme), 76, "    "))
         for note in profile.notes:
             out.append("")
             out.append(_wrap("Note: " + note, 76, "  "))
@@ -1514,6 +1652,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results = {key: analyze(show, VEHICLES[key]) for key in keys}
     interior = analyze_interior(show)
     closures = analyze_closures(show)
+    builds = {key: analyze_variants(show, VEHICLES[key]) for key in keys}
 
     if args.json:
         print(json.dumps({
@@ -1533,16 +1672,29 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 key: {
                     "label": VEHICLES[key].label,
                     "findings": [f.as_dict() for f in findings],
+                    "builds": [
+                        {
+                            "key": variant.key,
+                            "label": variant.label,
+                            "readme": variant.readme,
+                            "findings": [f.as_dict() for f in extra],
+                        }
+                        for variant, extra in builds.get(key, ())
+                    ],
                 }
                 for key, findings in results.items()
             },
         }, indent=2))
     else:
-        print(render_report(show, results, args.verbose, interior, closures))
+        print(render_report(show, results, args.verbose, interior, closures,
+                            builds))
 
+    build_findings = [f for entries in builds.values()
+                      for _, extra in entries for f in extra]
     if args.strict and any(
         f.severity in (ERROR, WARNING)
-        for findings in list(results.values()) + [interior, closures]
+        for findings in list(results.values()) + [interior, closures,
+                                                  build_findings]
         for f in findings
     ):
         return 1

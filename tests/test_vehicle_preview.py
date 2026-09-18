@@ -1222,5 +1222,242 @@ class ShippedExampleClosureTests(unittest.TestCase):
         self.assertTrue(at_limit, "expected a show at a documented limit")
 
 
+# --------------------------------------------------------------------------
+# Vehicle support -- https://github.com/teslamotors/light-show/issues/52
+# --------------------------------------------------------------------------
+
+LEFT_TAIL, RIGHT_TAIL, LICENSE_PLATE = 26, 27, 30
+
+
+def readme_lines():
+    with open(os.path.join(REPO_ROOT, "README.md")) as handle:
+        return handle.read().splitlines()
+
+
+def readme_bullets(heading):
+    """The bullet list directly under a heading."""
+    lines = readme_lines()
+    start = next(i for i, line in enumerate(lines)
+                 if line.strip().startswith("#") and heading in line)
+    bullets = []
+    for line in lines[start + 1:]:
+        if line.startswith("#"):
+            break
+        if line.startswith("- "):
+            bullets.append(line[2:].strip())
+    return bullets
+
+
+class VehicleSupportTests(unittest.TestCase):
+    """The tool's vehicle list is the README's list, or it is wrong.
+
+    Issue 52 asks for a vehicle to be supported. Adding one is a change to
+    the README's Supported Vehicles list and a matching profile here; this
+    test is what stops the two drifting apart.
+    """
+
+    def supported_bullets(self):
+        return readme_bullets("Supported Vehicles")
+
+    def test_tool_profiles_match_the_readme_list(self):
+        vehicles = [b for b in self.supported_bullets()
+                    if not b.startswith("Running Software")]
+        self.assertEqual(sorted(vehicles),
+                         sorted(p.label for p in vp.VEHICLES.values()))
+
+    def test_the_list_states_a_minimum_software_version(self):
+        software = [b for b in self.supported_bullets()
+                    if b.startswith("Running Software")]
+        self.assertEqual(len(software), 1)
+        self.assertIn("2021.44.25", software[0])
+
+    def test_model_s_and_x_are_limited_to_2021_and_newer(self):
+        """The boundary issue 52 ran into. A 2020 Model X is outside it."""
+        for key in ("models", "modelx"):
+            self.assertIn("2021+", vp.VEHICLES[key].label)
+
+    def test_model_3_and_y_carry_no_year_boundary(self):
+        for key in ("model3", "modely", "cybertruck"):
+            self.assertNotIn("+", vp.VEHICLES[key].label)
+
+
+class BuildVariantTests(unittest.TestCase):
+    def test_model_3_has_the_documented_pre_october_2020_build(self):
+        keys = [v.key for v in vp.VEHICLES["model3"].variants]
+        self.assertEqual(keys, ["pre-oct-2020"])
+
+    def test_model_y_has_no_build_variants(self):
+        # README.md names Model 3 only for the tail light rule, and Model Y
+        # is built from the Model 3 profile, so this is easy to get wrong.
+        self.assertEqual(vp.VEHICLES["modely"].variants, ())
+
+    def test_other_vehicles_have_no_build_variants(self):
+        for key in ("models", "modelx", "cybertruck"):
+            self.assertEqual(vp.VEHICLES[key].variants, (), key)
+
+    def test_every_variant_cites_a_readme_section(self):
+        for profile in vp.VEHICLES.values():
+            for variant in profile.variants:
+                self.assertTrue(variant.readme, variant.key)
+                self.assertIn(variant.readme, "\n".join(readme_lines()))
+
+    def test_variant_profile_layers_onto_its_parent(self):
+        parent = vp.VEHICLES["model3"]
+        variant = parent.variants[0]
+        derived = vp.variant_profile(parent, variant)
+
+        self.assertEqual(derived.label, variant.label)
+        self.assertEqual(derived.key, "model3:pre-oct-2020")
+        self.assertEqual(vp.kind_of(derived, LICENSE_PLATE), vp.SLAVED)
+        # Inherited, not restated.
+        self.assertEqual(vp.kind_of(derived, 13), vp.kind_of(parent, 13))
+        self.assertIn(variant.or_groups[0], derived.or_groups)
+        self.assertEqual(derived.variants, ())
+
+    def test_the_parent_profile_is_untouched_by_the_variant(self):
+        parent = vp.VEHICLES["model3"]
+        vp.variant_profile(parent, parent.variants[0])
+
+        self.assertNotEqual(vp.kind_of(parent, LICENSE_PLATE), vp.SLAVED)
+        self.assertEqual(len(parent.or_groups), 3)
+
+
+class BuildVariantFindingTests(unittest.TestCase):
+    def test_separately_driven_tails_collapse_on_the_older_build(self):
+        show = make_show(300, {
+            LEFT_TAIL: [(0, 20, ON_INSTANT)],
+            RIGHT_TAIL: [(30, 20, ON_INSTANT)],
+        })
+        base = vp.analyze(show, vp.VEHICLES["model3"])
+        variants = vp.analyze_variants(show, vp.VEHICLES["model3"])
+
+        self.assertEqual(find(base, "or-group-collapse"), [])
+        self.assertEqual(len(variants), 1)
+        self.assertEqual(len(find(variants[0][1], "or-group-collapse")), 1)
+
+    def test_tails_driven_together_are_fine_on_both_builds(self):
+        show = make_show(300, {
+            LEFT_TAIL: [(0, 20, ON_INSTANT)],
+            RIGHT_TAIL: [(0, 20, ON_INSTANT)],
+        })
+        _, extra = vp.analyze_variants(show, vp.VEHICLES["model3"])[0]
+        self.assertEqual(find(extra, "or-group-collapse"), [])
+
+    def test_the_license_plate_channel_is_reported_as_having_no_effect(self):
+        show = make_show(300, {LICENSE_PLATE: [(0, 50, ON_INSTANT)]})
+        _, extra = vp.analyze_variants(show, vp.VEHICLES["model3"])[0]
+        findings = find(extra, "channel-has-no-effect")
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, vp.INFO)
+        self.assertIn("tail lights", findings[0].detail)
+        # It is not the "no such light" message; the lamp is fitted.
+        self.assertEqual(find(extra, "channel-not-present"), [])
+
+    def test_an_unused_license_plate_channel_says_nothing(self):
+        show = make_show(300, {LEFT_TAIL: [(0, 20, ON_INSTANT)]})
+        _, extra = vp.analyze_variants(show, vp.VEHICLES["model3"])[0]
+        self.assertEqual(find(extra, "channel-has-no-effect"), [])
+
+    def test_only_the_difference_from_the_base_report_is_returned(self):
+        # Channels 4-6 collapse on every Model 3, so that finding belongs to
+        # the base report and must not be repeated under the build.
+        show = make_show(300, {
+            LEFT_CH4: [(0, 20, ON_INSTANT)],
+            LEFT_CH5: [(30, 20, ON_INSTANT)],
+        })
+        base = vp.analyze(show, vp.VEHICLES["model3"])
+        _, extra = vp.analyze_variants(show, vp.VEHICLES["model3"])[0]
+
+        self.assertTrue(find(base, "or-group-collapse"))
+        self.assertEqual(extra, [])
+
+    def test_a_show_that_avoids_the_difference_reports_nothing(self):
+        show = make_show(300, {LEFT_FRONT_TURN: [(0, 20, ON_INSTANT)]})
+        _, extra = vp.analyze_variants(show, vp.VEHICLES["model3"])[0]
+        self.assertEqual(extra, [])
+
+    def test_vehicles_without_variants_return_nothing(self):
+        show = make_show(300, {LICENSE_PLATE: [(0, 50, ON_INSTANT)]})
+        for key in ("models", "modelx", "modely", "cybertruck"):
+            self.assertEqual(vp.analyze_variants(show, vp.VEHICLES[key]), [],
+                             key)
+
+    def test_a_slaved_channel_does_not_trip_the_ramp_rules(self):
+        # 178 is a ramp code; on a channel with no effect it means nothing.
+        show = make_show(300, {LICENSE_PLATE: [(0, 5, ON_500)]})
+        _, extra = vp.analyze_variants(show, vp.VEHICLES["model3"])[0]
+
+        self.assertEqual(codes(extra), ["channel-has-no-effect"])
+
+
+class BuildVariantReportingTests(unittest.TestCase):
+    def build_show(self):
+        return make_show(300, {
+            LEFT_TAIL: [(0, 20, ON_INSTANT)],
+            RIGHT_TAIL: [(30, 20, ON_INSTANT)],
+        })
+
+    def test_the_report_names_the_build(self):
+        show = self.build_show()
+        text = vp.render_report(
+            show, {"model3": vp.analyze(show, vp.VEHICLES["model3"])},
+            verbose=False,
+            builds={"model3": vp.analyze_variants(show,
+                                                  vp.VEHICLES["model3"])})
+
+        self.assertIn("Also on Model 3 built before October 2020:", text)
+        self.assertIn("Tail lights and License Plate Lights", text)
+
+    def test_nothing_is_added_when_the_build_behaves_the_same(self):
+        show = make_show(300, {LEFT_FRONT_TURN: [(0, 20, ON_INSTANT)]})
+        text = vp.render_report(
+            show, {"model3": vp.analyze(show, vp.VEHICLES["model3"])},
+            verbose=True,
+            builds={"model3": vp.analyze_variants(show,
+                                                  vp.VEHICLES["model3"])})
+        self.assertNotIn("Also on", text)
+
+    def test_builds_are_omitted_entirely_when_not_requested(self):
+        show = self.build_show()
+        text = vp.render_report(
+            show, {"model3": vp.analyze(show, vp.VEHICLES["model3"])},
+            verbose=True)
+        self.assertNotIn("Also on", text)
+
+
+class BuildVariantCommandLineTests(InteriorCommandLineTests):
+    def build_show(self):
+        return make_show(300, {
+            LEFT_TAIL: [(0, 20, ON_INSTANT)],
+            RIGHT_TAIL: [(30, 20, ON_INSTANT)],
+            LICENSE_PLATE: [(0, 50, ON_INSTANT)],
+        })
+
+    def test_json_carries_the_build_findings(self):
+        path = self.write_show(self.build_show())
+        code, out = self.run_main(path, "--vehicle", "model3", "--json")
+        payload = json.loads(out)
+
+        builds = payload["vehicles"]["model3"]["builds"]
+        self.assertEqual(len(builds), 1)
+        self.assertEqual(builds[0]["key"], "pre-oct-2020")
+        self.assertIn("channel-has-no-effect",
+                      [f["code"] for f in builds[0]["findings"]])
+
+    def test_vehicles_without_builds_report_an_empty_list(self):
+        path = self.write_show(self.build_show())
+        _, out = self.run_main(path, "--vehicle", "modely", "--json")
+
+        self.assertEqual(
+            json.loads(out)["vehicles"]["modely"]["builds"], [])
+
+    def test_strict_fails_on_a_build_only_warning(self):
+        path = self.write_show(self.build_show())
+        self.assertEqual(self.run_main(path, "--vehicle", "model3")[0], 0)
+        self.assertEqual(
+            self.run_main(path, "--vehicle", "model3", "--strict")[0], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -640,5 +640,58 @@ class CommandLineTests(UsbCheckTestCase):
         self.assertEqual(json.loads(out)["playable_show_count"], 1)
 
 
+class VehicleSupportTests(UsbCheckTestCase):
+    """Issue 52: the half of "my car will not play it" the drive cannot show."""
+
+    def test_the_support_requirements_are_always_stated(self):
+        drive = self.drive()
+        drive.add_show("one")
+        report = uc.check_drive(self.tmpdir)
+
+        findings = [f for f in report.findings if f.code == "VEHICLE_SUPPORT"]
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, uc.INFO)
+        self.assertIn("Model X (2021+)", findings[0].detail)
+
+    def test_nothing_is_claimed_when_there_is_no_show_folder(self):
+        report = uc.check_drive(self.tmpdir)
+        self.assertNoCode(report, "VEHICLE_SUPPORT")
+
+    def test_more_than_one_show_names_the_software_it_needs(self):
+        drive = self.drive()
+        drive.add_show("one")
+        drive.add_show("two")
+        report = uc.check_drive(self.tmpdir)
+
+        findings = [f for f in report.findings
+                    if f.code == "MULTI_SHOW_SOFTWARE"]
+        self.assertEqual(len(findings), 1)
+        self.assertIn(uc.MULTI_SHOW_SOFTWARE, findings[0].summary)
+
+    def test_a_single_show_does_not(self):
+        drive = self.drive()
+        drive.add_show("only-one")
+        report = uc.check_drive(self.tmpdir)
+
+        self.assertNoCode(report, "MULTI_SHOW_SOFTWARE")
+
+    def test_shows_that_will_not_play_do_not_count_towards_the_multi_note(self):
+        drive = self.drive()
+        drive.add_show("good")
+        drive.write_fseq("no-audio")
+        report = uc.check_drive(self.tmpdir)
+
+        self.assertNoCode(report, "MULTI_SHOW_SOFTWARE")
+
+    def test_the_notes_do_not_change_the_exit_code(self):
+        drive = self.drive()
+        drive.add_show("one")
+        drive.add_show("two")
+        report = uc.check_drive(self.tmpdir)
+
+        self.assertEqual(report.counts()[uc.ERROR], 0)
+        self.assertEqual(report.counts()[uc.WARNING], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
