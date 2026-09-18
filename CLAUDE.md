@@ -30,6 +30,7 @@ almost every change is a change to something a car will eventually play.
 | `tools/docs_check.py` | Checks the documentation's links, file references and the community show list, without touching the network. |
 | `tools/sequence_check.py` | Reads a saved xLights `.xsq` and reports what will get in the way later. |
 | `tools/channel_probe.py` | Builds a show that lights one channel at a time, to see what each drives on a particular car. |
+| `tools/show_folder_check.py` | Checks the folder given to xLights as the show folder, and the audio files in it. |
 | `tests/` | `unittest` suite, standard library only. |
 | `examples/` | Example shows, distributed as zips. |
 
@@ -121,6 +122,45 @@ comment. If the code and the README disagree, that is a bug worth raising rather
 than silently picking one. Where the README is simply silent — it describes the
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
+
+### A vague report still has checkable causes
+
+[#75](https://github.com/teslamotors/light-show/issues/75) is one sentence:
+"the file doesn't show up when I press custom and then I select file of model
+S". It went unanswered for three years, and it is tempting to close as
+unclear. Read against `README.md`, "Creating a new sequence", it lands on
+step 4 -- choosing the audio for a new Musical Sequence -- and the causes are
+finite and checkable from disk:
+
+- **The file type dropdown.** A `.wav` is hidden unless it is set to "xLights
+  Audio Files". The README noted this as a trailing clause on step 4 with a
+  screenshot, which is a hard place to find when you are searching for a
+  symptom rather than reading the steps in order.
+- **A format xLights never lists.** `.m4a`, `.aac`, `.flac`, `.wma` do not
+  appear however the dropdown is set, and a music library hands out `.m4a` by
+  default. The README said "use .mp3 or .wav" but never that everything else
+  is invisible.
+- **The wrong folder.** "Model S" is the show folder, and if xLights was
+  pointed at the zip, the folder above the project directory, or the extra
+  folder "Extract All" leaves behind, no Tesla models appear either.
+
+So the answer was a symptom-first section (`When something does not show up in
+xLights`) rather than another paragraph inside the numbered steps. When an
+issue is vague, work out which documented step it lands on and cover the
+causes of that step; do not ask a reporter who left three years ago.
+
+`tools/show_folder_check.py` covers the checkable half. Notes on it:
+
+- **`UNLISTED_AUDIO` is a list of what people actually arrive with**, not an
+  attempt at every audio extension. An unknown extension is ignored rather
+  than guessed at, because claiming xLights will not list something is a
+  claim.
+- **It names the folder to select.** The `folder-one-level-up` finding prints
+  the full path to paste into File > Select Show Folder, which is the whole
+  value of noticing the nesting.
+- **It tells the two project folders apart** by counting controllers in
+  `xlights_networks.xml`, the same fact `validator.describe_channel_count()`
+  uses: one car is 200 channels, the cross-vehicle folder is five of them.
 
 ### A mapping report is answered with an instrument, not an edit
 
