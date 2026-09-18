@@ -120,6 +120,29 @@ jobs:
           fi
           echo "Analysed $found example show(s)."
 
+      - name: Check the shipped show folders extract to usable projects
+        # Issue #75: "the file doesn't show up" is often the folder given to
+        # xLights, so the folders this repository ships have to survive a
+        # plain unzip and be recognisable afterwards.
+        run: |
+          set -euo pipefail
+          rm -rf _folders && mkdir -p _folders
+          python3 -c "
+          import zipfile
+          for name in ('tesla_xlights_show_folder',
+                       'tesla_xlights_cross_vehicle_folder'):
+              with zipfile.ZipFile('xlights/%s.zip' % name) as bundle:
+                  bundle.extractall('_folders/%s' % name)
+          "
+          python3 tools/show_folder_check.py             _folders/tesla_xlights_show_folder/tesla_xlights_show_folder -v
+          python3 tools/show_folder_check.py             _folders/tesla_xlights_cross_vehicle_folder/tesla_xlights_cross_vehicle_folder -v
+          # Pointing at the extraction parent must be guided down, not accepted.
+          if python3 tools/show_folder_check.py _folders/tesla_xlights_show_folder > /dev/null; then
+            echo "expected the extraction parent to be rejected" >&2
+            exit 1
+          fi
+          echo "show folders extract and are recognised."
+
       - name: Build a channel probe and check it is playable
         # Issue #72: the probe is how an owner answers a mapping question on
         # their own car, so the show it writes has to be one the car accepts.

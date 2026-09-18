@@ -194,6 +194,30 @@ These come from xLights rather than from the vehicle. xLights bugs belong in the
 
 To check a sequence before exporting it, run [sequence_check.py](#sequence_check).
 
+### <a name="not_showing_up"></a>When something does not show up in xLights
+**The audio file is not in the list when creating a sequence.** Two reasons, in order of likelihood:
+
+- The picker's file type dropdown is set to one of the FPP options. Set it to "xLights Audio Files" and the file appears - this is the note on step 4 of [creating a new sequence](#creating-a-new-sequence), and the [screenshot](#creating-a-new-sequence) shows the dropdown.
+- The file is not a format xLights lists at all. Only .mp3 and .wav are offered; an .m4a, .aac, .flac or .wma never appears however the dropdown is set, which is easy to hit because music libraries hand out .m4a. Convert it to a 44.1 kHz .wav.
+
+**The Tesla vehicle, models or light groups are not there.** xLights is pointed at the wrong folder. The project directory is the folder containing `xlights_rgbeffects.xml`; unzipping often leaves a folder of the same name wrapped around it, and selecting the outer one finds nothing.
+
+[show_folder_check.py](#show_folder_check) tells these apart:
+
+```
+python3 tools/show_folder_check.py ~/Downloads/tesla_xlights_show_folder
+```
+
+## <a name="show_folder_check"></a>Show Folder Check Script
+`tools/show_folder_check.py` looks at the folder you gave xLights and reports what xLights will find in it:
+
+```
+python3 tools/show_folder_check.py path/to/tesla_xlights_show_folder
+python3 tools/show_folder_check.py ~/Downloads -v
+```
+
+It reports a path that is still a .zip, a project folder one level below the one you picked (naming the folder to select instead), a folder that is not a project directory at all, and a missing `xlights_rgbeffects.xml` or `xlights_networks.xml`. It also lists the audio files in the folder, separating the ones xLights will offer from the ones it will not, and says when a folder is the [cross-vehicle](#cross_vehicle) one rather than the single-car project directory.
+
 ## <a name="sequence_check"></a>Sequence Check Script
 `tools/sequence_check.py` reads a saved .xsq and reports what would get in the way later:
 
