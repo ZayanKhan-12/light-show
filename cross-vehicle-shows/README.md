@@ -65,3 +65,22 @@ Before you can enjoy the show on up to five vehicles, you need to export the eff
 
     <img src="/images/convert_render_all.png?raw=true" width="300" />
 8. Repeat steps 3-7 for each car.
+
+## Checking the exported set
+Steps 3-7 are repeated once per car, and the show only works if every car's file
+agrees with the others. Put each car's files in their own folder and check the
+set before you copy it to the drives:
+
+```
+my-show/
+  Car #1/LightShow/lightshow.fseq, lightshow.wav
+  Car #2/LightShow/lightshow.fseq, lightshow.wav
+  ...
+
+python3 ../tools/multi_car_check.py my-show
+```
+
+It reports cars whose shows came out different lengths, a car carrying different
+audio from the rest, a gap in the car numbering, and a car exported from a
+different project folder. The cars do not have to share a frame interval; they
+stay together because their shows are the same length.

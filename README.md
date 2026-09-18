@@ -90,6 +90,14 @@ Playing a custom show is a vehicle capability. It cannot be enabled by the show 
 - The maximum duration for a custom Tesla xLights show is 4 hours.
 - The limit on number of commands during a custom show has been removed. This was the whole-show budget that older versions of the validator reported as a "memory usage" percentage; light channels are no longer counted against anything, so a show can no longer be too large to play.
 - Individual closures do still have actuation limits. They are listed in the [Closures channels](#closures) table, only Open, Close and Dance count towards them, and they are counted separately for each closure. The [Vehicle Preview Script](#vehicle_preview) reports how much of each closure's budget a show spends.
+
+### <a name="what_a_show_controls"></a>What a custom show controls
+A show is an array of channel values, one value per lamp per frame. It is not an image.
+
+- **Each headlight is a single channel.** The Outer Main Beam, Inner Main Beam and the rest are one channel each, so a show sets how bright a lamp is and nothing finer. No channel addresses the elements inside a headlamp, so a show cannot put a word, a logo or a picture through one.
+- **"Projector" here means the optics, not projection.** The [light channel locations](#light_locations) are given for reflector and projector headlamps; that is the lamp type fitted to the car, not an image projector.
+- **Individually addressable LEDs do exist, on the light bars.** The [Cybertruck front light bar](#cybertruck-light-bar) has 60 controllable LEDs and the rear has 52, and the offroad bar has six segments. Pixel-level effects belong there, and xLights' own effects can be placed directly on them. The [interior RGB segments](#interior_rgb) take a colour each.
+- **Animation across several cars is supported.** See [cross-vehicle shows](#cross_vehicle).
 ## Audio file requirements
 You can use both the mp3 and wav format (.wav is recommended).
 Make sure the file is encoded with a sample rate of 44.1 kHz; less common 48 kHz files won't properly sync to the light show.
@@ -214,6 +222,17 @@ python3 tools/xlights_layers.py apply    # write layer_groups.json into the .zip
 .fseq files exported from earlier versions of this project from silently
 breaking. Contributors changing the show folder should run it before opening a
 pull request; it needs only Python 3.7+ and no packages.
+
+## <a name="cross_vehicle"></a>Cross-vehicle shows
+A show can run across several cars parked side by side, with effects that sweep from one car to the next. [cross-vehicle-shows/README.md](cross-vehicle-shows/README.md) covers programming one, and three finished examples ship in [examples/](examples): "The Arrival" on 5 cars, "Ready for Assault" on 8, and "Cyber Symphony" on 4. Each example folder has a diagram of how to park the cars.
+
+The last step of making one is manual and repeated once per car: reopen xLights, import the cross-vehicle sequence with that car's mapping, Render All, save, export. `tools/multi_car_check.py` checks the result:
+
+```
+python3 tools/multi_car_check.py my-show-folder
+```
+
+Given a folder holding one folder per car, it reports anything that stops the set running as one show: cars whose shows are different lengths, a car carrying different audio from the rest, a missing car in the row, or a car exported from a different project folder. Note that the cars do **not** have to use the same frame interval - they stay together because their shows are the same length. "The Arrival" runs two of its five cars at 25 ms and three at 50 ms.
 
 ## Checking the documentation
 This guide is held together by links: cross-references between its own sections,
