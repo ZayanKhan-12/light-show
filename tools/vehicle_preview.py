@@ -40,6 +40,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 LIGHT = "light"
 CLOSURE = "closure"
+RGB = "rgb"           # one of three channels forming an interior colour
 
 CHANNELS: Dict[int, Tuple[str, str]] = {
     1: ("Left Outer Main Beam", LIGHT),
@@ -89,6 +90,58 @@ CHANNELS: Dict[int, Tuple[str, str]] = {
     45: ("Right Rear Door Handle", CLOSURE),
     46: ("Charge Port", CLOSURE),
 }
+
+# --------------------------------------------------------------------------
+# Interior RGB
+# --------------------------------------------------------------------------
+# The cabin lights answer https://github.com/teslamotors/light-show/issues/49,
+# which was asked when they did not exist yet.  They do now: README.md,
+# "Interior RGB Lights" describes full RGB control of the Center Front Display
+# plus five accent segments, and the StartChannel of each one is recorded in
+# xlights/channel_map.json.
+#
+# These channels are unlike every other channel in the file.  Elsewhere a byte
+# is an enum of brightness steps; here three consecutive bytes are one colour,
+# and any value in them is meaningful.  None of the ramp, boolean or
+# brightness rules apply, so they carry their own type and every check that
+# walks CHANNELS skips them.
+
+
+@dataclasses.dataclass
+class InteriorSegment:
+    """One RGB segment of the cabin: three consecutive channels, R, G, B."""
+
+    name: str
+    start: int
+    # README.md: the five accent segments exist only "on cars with Interior
+    # Accent Lights"; the Center Front Display is the screen itself.
+    accent: bool
+
+    @property
+    def channels(self) -> Tuple[int, int, int]:
+        return (self.start, self.start + 1, self.start + 2)
+
+
+# StartChannel values from xlights/channel_map.json.  The accent models are
+# declared as 50-node strings for the xLights preview but sit three channels
+# apart, so one RGB triplet per segment is what reaches the vehicle.
+INTERIOR_SEGMENTS: Tuple[InteriorSegment, ...] = (
+    InteriorSegment("Center Front Display", 176, accent=False),
+    InteriorSegment("Right Rear RGB", 179, accent=True),
+    InteriorSegment("Right Front RGB", 182, accent=True),
+    InteriorSegment("Center Front RGB", 185, accent=True),
+    InteriorSegment("Left Front RGB", 188, accent=True),
+    InteriorSegment("Left Rear RGB", 191, accent=True),
+)
+
+INTERIOR_FIRST_CHANNEL = INTERIOR_SEGMENTS[0].start
+INTERIOR_LAST_CHANNEL = INTERIOR_SEGMENTS[-1].channels[-1]
+
+for _segment in INTERIOR_SEGMENTS:
+    for _channel, _component in zip(_segment.channels, ("red", "green", "blue")):
+        CHANNELS[_channel] = (
+            "{} ({})".format(_segment.name, _component), RGB)
+del _segment, _channel, _component
 
 
 def channel_name(channel: int) -> str:
@@ -695,6 +748,11 @@ def _check_absent_channels(
     for channel in sorted(CHANNELS):
         if channel > show.channel_count:
             continue
+        # Interior RGB is reported per segment by analyze_interior(), not per
+        # channel; a colour is three channels and "Left Rear RGB (green) is
+        # not fitted" would be three findings saying one thing.
+        if CHANNELS[channel][1] == RGB:
+            continue
         series = show.series(channel)
         if not any(series):
             continue
@@ -763,6 +821,176 @@ def _check_boolean_ramps(
             ))
 
 
+# --------------------------------------------------------------------------
+# Interior RGB analysis
+# --------------------------------------------------------------------------
+# These findings are about the show, not about one vehicle: README.md says the
+# accent segments exist "on cars with Interior Accent Lights" without naming
+# which builds those are, so there is nothing here to report per vehicle.
+
+
+@dataclasses.dataclass
+class SegmentUsage:
+    """What a show does with one interior segment."""
+
+    segment: InteriorSegment
+    colours: int                        # distinct colours, black excluded
+    changes: int                        # colour changes, black included
+    lit_frames: int
+    first_lit_ms: Optional[int]
+
+    @property
+    def lit(self) -> bool:
+        return self.lit_frames > 0
+
+    def as_dict(self) -> dict:
+        return {
+            "name": self.segment.name,
+            "channels": list(self.segment.channels),
+            "accent": self.segment.accent,
+            "lit": self.lit,
+            "colours": self.colours,
+            "changes": self.changes,
+            "lit_frames": self.lit_frames,
+            "first_lit_ms": self.first_lit_ms,
+        }
+
+
+def interior_usage(show: Show) -> List[SegmentUsage]:
+    """Measure every interior segment. Empty when the show has no cabin data."""
+    if show.channel_count < INTERIOR_LAST_CHANNEL:
+        return []
+
+    usage: List[SegmentUsage] = []
+    for segment in INTERIOR_SEGMENTS:
+        red, green, blue = (show.series(c) for c in segment.channels)
+        colours = set()
+        changes = 0
+        lit_frames = 0
+        first_lit = None
+        previous = None
+        for frame in range(show.frame_count):
+            colour = (red[frame], green[frame], blue[frame])
+            if colour != previous:
+                changes += 1
+                previous = colour
+            if colour != (0, 0, 0):
+                colours.add(colour)
+                lit_frames += 1
+                if first_lit is None:
+                    first_lit = frame
+        usage.append(SegmentUsage(
+            segment=segment,
+            colours=len(colours),
+            changes=changes,
+            lit_frames=lit_frames,
+            first_lit_ms=(None if first_lit is None
+                          else _timestamp(first_lit, show.step_time_ms)),
+        ))
+    return usage
+
+
+def analyze_interior(show: Show) -> List[Finding]:
+    """Report what this show does, or could do, with the interior lights."""
+    findings: List[Finding] = []
+    usage = interior_usage(show)
+
+    if not usage:
+        # A 48-channel export predates the interior lights entirely.  This is
+        # the answer to issue #49 for anyone whose show cannot reach them.
+        findings.append(Finding(
+            severity=INFO,
+            code="interior-not-in-export",
+            summary="This show has no interior lighting data",
+            detail=(
+                "The cabin is driven by channels {first}-{last}, which only "
+                "exist in a {full}-channel export; this show has {count}. "
+                "Re-create or import it in the current xLights show folder to "
+                "reach the Center Front Display and the accent segments. See "
+                'README.md, "Interior RGB Lights".'
+            ).format(first=INTERIOR_FIRST_CHANNEL, last=INTERIOR_LAST_CHANNEL,
+                     full=200, count=show.channel_count),
+        ))
+        return findings
+
+    display = [u for u in usage if not u.segment.accent]
+    accents = [u for u in usage if u.segment.accent]
+    display_lit = [u for u in display if u.lit]
+    accents_lit = [u for u in accents if u.lit]
+
+    if not display_lit and not accents_lit:
+        findings.append(Finding(
+            severity=INFO,
+            code="interior-unused",
+            summary="The interior lights stay dark for the whole show",
+            detail=(
+                "This export can drive {total} interior segments -- {names} "
+                "-- and never does. The Center Front Display alone lights up "
+                'the whole cabin. See README.md, "Interior RGB Lights".'
+            ).format(total=len(usage),
+                     names=", ".join(u.segment.name for u in usage)),
+            channels=tuple(
+                c for u in usage for c in u.segment.channels),
+        ))
+        return findings
+
+    if accents_lit and not display_lit:
+        findings.append(Finding(
+            severity=WARNING,
+            code="interior-accents-without-display",
+            summary="Only the accent lights are driven, and they are optional "
+                    "hardware",
+            detail=(
+                "{count} accent segment(s) are used while the Center Front "
+                "Display stays black. README.md says the accent segments "
+                'exist only "on cars with Interior Accent Lights", so on a '
+                "car without them nothing in the cabin responds. The display "
+                "is brighter than the accents and the README recommends "
+                "operating them together."
+            ).format(count=len(accents_lit)),
+            channels=tuple(
+                c for u in accents_lit for c in u.segment.channels),
+            first_at_ms=min(u.first_lit_ms for u in accents_lit),
+        ))
+
+    if display_lit and not accents_lit:
+        findings.append(Finding(
+            severity=INFO,
+            code="interior-display-only",
+            summary="The Center Front Display is used but the accent segments "
+                    "are not",
+            detail=(
+                "This works on every car that has the display, which is the "
+                "safe choice. The five accent segments -- {names} -- are "
+                "available as well on cars fitted with Interior Accent "
+                "Lights."
+            ).format(names=", ".join(u.segment.name for u in accents)),
+            channels=display[0].segment.channels,
+            first_at_ms=display_lit[0].first_lit_ms,
+        ))
+
+    if accents_lit and len(accents_lit) < len(accents):
+        dark = [u.segment.name for u in accents if not u.lit]
+        findings.append(Finding(
+            severity=INFO,
+            code="interior-partial-accents",
+            summary="{} of {} accent segments stay dark".format(
+                len(dark), len(accents)),
+            detail=(
+                "{names} are never driven. This is only worth a look if the "
+                "effect was meant to cover the whole cabin."
+            ).format(names=", ".join(dark)),
+            channels=tuple(
+                c for u in accents if not u.lit for c in u.segment.channels),
+        ))
+
+    findings.sort(key=lambda f: (
+        _SEVERITY_ORDER[f.severity],
+        f.first_at_ms if f.first_at_ms is not None else 0,
+    ))
+    return findings
+
+
 def analyze(show: Show, profile: VehicleProfile) -> List[Finding]:
     """Return everything about this show that will surprise the author."""
     findings: List[Finding] = []
@@ -808,11 +1036,52 @@ def _wrap(text: str, width: int, indent: str) -> str:
 _MARKERS = {ERROR: "ERROR  ", WARNING: "WARNING", INFO: "INFO   "}
 
 
-def render_report(show: Show, results: Dict[str, List[Finding]], verbose: bool) -> str:
+def render_interior(usage: List[SegmentUsage],
+                    findings: List[Finding], verbose: bool) -> List[str]:
+    """The cabin section. Vehicle-independent, so it is rendered once."""
+    out: List[str] = ["-" * 72, "Interior RGB", "-" * 72]
+    if not usage:
+        out.append("  This export cannot drive the interior lights.")
+    else:
+        lit = [u for u in usage if u.lit]
+        if not lit:
+            out.append("  No interior segment is driven by this show.")
+        for entry in usage:
+            if not entry.lit and not verbose:
+                continue
+            if entry.lit:
+                out.append("  {:<22}{:>5} colour(s),{:>6} change(s), "
+                           "first lit {}".format(
+                               entry.segment.name, entry.colours,
+                               entry.changes,
+                               _format_time(entry.first_lit_ms)))
+            else:
+                out.append("  {:<22} not driven".format(entry.segment.name))
+    for finding in findings:
+        if finding.severity == INFO and not verbose:
+            continue
+        out.append("")
+        out.append("  [{}] {}".format(_MARKERS[finding.severity],
+                                      finding.code))
+        out.append(_wrap(finding.summary, 76, "    "))
+        out.append(_wrap(finding.detail, 76, "      "))
+    hidden = sum(1 for f in findings if f.severity == INFO)
+    if hidden and not verbose:
+        out.append("")
+        out.append("  {} interior note(s) hidden; re-run with -v to see "
+                   "them.".format(hidden))
+    out.append("")
+    return out
+
+
+def render_report(show: Show, results: Dict[str, List[Finding]], verbose: bool,
+                  interior: Optional[List[Finding]] = None) -> str:
     out: List[str] = []
     out.append("{} frames, {} ms per frame, total duration {}.".format(
         show.frame_count, show.step_time_ms, _format_time(show.duration_ms)))
     out.append("")
+    if interior is not None:
+        out.extend(render_interior(interior_usage(show), interior, verbose))
     for key, findings in results.items():
         profile = VEHICLES[key]
         errors = sum(1 for f in findings if f.severity == ERROR)
@@ -881,6 +1150,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     keys = args.vehicle or sorted(VEHICLES)
     results = {key: analyze(show, VEHICLES[key]) for key in keys}
+    interior = analyze_interior(show)
 
     if args.json:
         print(json.dumps({
@@ -888,6 +1158,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "frame_count": show.frame_count,
             "step_time_ms": show.step_time_ms,
             "duration_ms": show.duration_ms,
+            "interior": {
+                "segments": [u.as_dict() for u in interior_usage(show)],
+                "findings": [f.as_dict() for f in interior],
+            },
             "vehicles": {
                 key: {
                     "label": VEHICLES[key].label,
@@ -897,11 +1171,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             },
         }, indent=2))
     else:
-        print(render_report(show, results, args.verbose))
+        print(render_report(show, results, args.verbose, interior))
 
     if args.strict and any(
         f.severity in (ERROR, WARNING)
-        for findings in results.values() for f in findings
+        for findings in list(results.values()) + [interior] for f in findings
     ):
         return 1
     return 0

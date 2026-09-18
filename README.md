@@ -254,6 +254,8 @@ python3 tools/vehicle_preview.py lightshow.fseq --vehicle model3 -v
 ```
 The vehicle keys are ```models```, ```modelx```, ```model3```, ```modely``` and ```cybertruck```. Add ```--json``` for machine-readable output, or ```--strict``` to exit non-zero when anything is reported, which is useful in a build pipeline.
 
+The report opens with an [Interior RGB](#interior_rgb) section, which is the same on every vehicle: it lists what the show does with the Center Front Display and the five accent segments, and says so when a show cannot reach them at all.
+
 Expected output looks like, running against [lightshow_example_2](examples/lightshow_example_2_Max_Carlisle_Auld_Lang_Syne_In_the_City.zip?raw=true):
 ```
 > python3 tools/vehicle_preview.py lightshow.fseq --vehicle model3
@@ -287,6 +289,11 @@ Model 3  -  4 error(s), 7 warning(s), 19 note(s)
 | ```ramp-ignored``` | A ramping effect on a channel that is boolean on this vehicle, so it switches instantly here. |
 | ```channel-not-present``` | The show drives a light or closure this vehicle does not have. |
 | ```channel-optional-hardware``` | The light is missing on some builds of this vehicle, for example front fog on Model 3 Standard Range +. |
+| ```interior-not-in-export``` | The show has no [interior RGB](#interior_rgb) channels, because it was exported from an older project directory. |
+| ```interior-unused``` | The show can drive the interior lights and leaves every segment dark. |
+| ```interior-accents-without-display``` | Only the optional accent segments are driven, so nothing lights up in a car without Interior Accent Lights. |
+| ```interior-display-only``` | The Center Front Display is used and the accent segments are not, which works on every equipped car. |
+| ```interior-partial-accents``` | Some accent segments are driven and others stay dark. |
 
 ## Boolean Light Channels
 Most lights available on the vehicle can only turn on or off instantly, which corresponds to 0% or 100% brightness of an 'Effect' in xLights.
@@ -552,7 +559,7 @@ To make old light shows look as good as possible on the new Cybertruck's lights,
 - Bed Lights are activated with Reverse Light in xLights.
 - L/R Rear Turn Signals have been disabled.
 
-#### Interior RGB Lights
+#### <a name="interior_rgb"></a>Interior RGB Lights
 - There is full RGB control over the color of the Center Front Display.
     - This visibly lights up the entire interior, even when the show is viewed from outside.
 - On cars with Interior Accent Lights, there is full RGB control over each of the five segments:
@@ -562,6 +569,20 @@ To make old light shows look as good as possible on the new Cybertruck's lights,
     - The Front Display is brighter than the Accent lights. For most effects, it is recommended to operate them together.
 - In xLights, recommended effects for RGB effects are: Color Wash, On.
     - Note: By right-clicking on colors in the Color window, custom color curves can be created with the "On"" effect.
+- Each segment is three consecutive channels in the exported .fseq - red, green and blue - starting at channel 176:
+
+    | Segment | Channels |
+    | --- | --- |
+    | Center Front Display | 176-178 |
+    | Right Rear RGB | 179-181 |
+    | Right Front RGB | 182-184 |
+    | Center Front RGB | 185-187 |
+    | Left Front RGB | 188-190 |
+    | Left Rear RGB | 191-193 |
+
+    - Unlike the light channels, these bytes are not brightness steps. Every value of each component is a meaningful part of the color.
+    - A show exported from an older project directory has only 48 channels and no interior data at all. See [Converting old show files](#converting-old-show-files) to bring one forward.
+- To see what a finished show does with the cabin, run the [Vehicle Preview Script](#vehicle_preview). It lists every segment with the colors and timings it found, and flags a show that drives only the optional accent segments.
 
 <img src="/images/rgb_interior.png?raw=true" width="800" />
 
