@@ -126,6 +126,40 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### Two accounts is still not a mapping
+
+[#113](https://github.com/teslamotors/light-show/issues/113) asks for the
+newer headlights to be documented — Model X projector lamps and the refreshed
+Model 3 — and carries a detailed set of owner observations for Highland,
+including that the Inner and Outer Main Beam channels are the other way round.
+
+That is the **second** report of that swap.
+[#72](https://github.com/teslamotors/light-show/issues/72) said the same about
+a 2023 Fremont Model 3. Two independent accounts on two different builds is
+more than the single report that got #76 written down as a note, and it is
+still not a reason to touch a channel assignment. Nothing was remapped, and a
+test asserts the four channels involved still carry the names they always did.
+
+What corroboration buys is **weight in the wording**, not a code change: the
+README says two owners on two builds rather than one owner, which is what
+tells a maintainer this is worth confirming.
+
+Three things worth keeping from how #113 was handled:
+
+- **Record the observation that confirms the documentation too.** Fisico
+  reports the light band responding to Channels 4-6 with the fade on Channel
+  4, which is exactly what "Ramping Channels 4-6" already says. Writing that
+  down tells a reader which part of the page they can trust, and costs
+  nothing.
+- **Name the gap precisely.** Model S and Model 3/Y each have a reflector and
+  a projector image; Model X has one image, while the brightness table still
+  distinguishes the two. That is the whole of the Model X half of the request,
+  and it is a sentence rather than a photograph nobody here can take.
+- **Every owner report ends with the probe.** `channel_probe.py` exists to
+  turn an account into a video, and a test asserts each vehicle note offers
+  it. A report this repository cannot verify should always leave the reporter
+  a way to do it themselves.
+
 ### Write down the workaround without inventing the cause
 
 [#112](https://github.com/teslamotors/light-show/issues/112) is a drive the

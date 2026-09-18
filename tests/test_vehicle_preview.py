@@ -401,6 +401,54 @@ class HardwareTests(unittest.TestCase):
             self.assertEqual(findings, [], key)
 
 
+class OwnerReportTests(unittest.TestCase):
+    """Reports this repository records without acting on them.
+
+    Issues 72, 76 and 113 all report a light behaving differently from the
+    documentation. None of them changes a channel assignment, because that
+    mapping is what every exported .fseq depends on; each is carried as a
+    note on the vehicle, attributed, with the probe offered as the way to
+    turn it into evidence.
+    """
+
+    def notes_for(self, key):
+        return " ".join(vp.VEHICLES[key].notes)
+
+    def test_the_model_3_note_records_both_beam_reports(self):
+        note = self.notes_for("model3")
+
+        self.assertIn("Highland", note)
+        self.assertIn("#113", note)
+        self.assertIn("#72", note)
+
+    def test_the_model_x_note_records_the_lamp_report(self):
+        note = self.notes_for("modelx")
+
+        self.assertIn("#76", note)
+        self.assertIn("Aux Park", note)
+
+    def test_every_owner_report_offers_the_probe(self):
+        for key in ("model3", "modelx"):
+            self.assertIn("channel_probe.py", self.notes_for(key), key)
+
+    def test_no_report_has_changed_a_channel_assignment(self):
+        """The line none of them cross."""
+        self.assertEqual(vp.channel_name(1), "Left Outer Main Beam")
+        self.assertEqual(vp.channel_name(3), "Left Inner Main Beam")
+        self.assertEqual(vp.channel_name(13), "Left Front Turn")
+        self.assertEqual(vp.channel_name(17), "Left Aux Park")
+
+    def test_the_readme_records_the_highland_observations(self):
+        with open(os.path.join(REPO_ROOT, "README.md"),
+                  encoding="utf-8") as handle:
+            readme = handle.read()
+
+        self.assertIn('Model 3 "Highland"', readme)
+        self.assertIn("owner observation rather than a Tesla mapping", readme)
+        # The one observation that confirms the existing documentation.
+        self.assertIn("Ramping Channels 4-6", readme)
+
+
 class CybertruckMappingTests(unittest.TestCase):
     """Issue 95: the Cybertruck mapping table in README.md.
 
