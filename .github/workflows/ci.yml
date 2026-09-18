@@ -88,6 +88,39 @@ jobs:
           fi
           echo "Analysed $found example show(s)."
 
+      - name: Check the vehicle list against the README
+        # Issue #52: the supported-vehicle list has one home. Adding a vehicle
+        # means editing the README and adding a profile in the same change.
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import re, sys
+          sys.path.insert(0, "tools")
+          import vehicle_preview as vp
+
+          lines = open("README.md").read().splitlines()
+          start = next(i for i, l in enumerate(lines)
+                       if l.startswith("#") and "Supported Vehicles" in l)
+          bullets = []
+          for line in lines[start + 1:]:
+              if line.startswith("#"):
+                  break
+              if line.startswith("- "):
+                  bullets.append(line[2:].strip())
+
+          vehicles = [b for b in bullets if not b.startswith("Running Software")]
+          labels = sorted(p.label for p in vp.VEHICLES.values())
+          assert sorted(vehicles) == labels, (vehicles, labels)
+          assert any(b.startswith("Running Software") for b in bullets)
+          print("README and vehicle_preview agree on:", ", ".join(labels))
+
+          for profile in vp.VEHICLES.values():
+              for variant in profile.variants:
+                  assert variant.readme in open("README.md").read(), variant.key
+                  print("build variant {} cites README '{}'".format(
+                      variant.key, variant.readme))
+          PYEOF
+
       - name: Report what every example does with the interior lights
         # Issue #49: the cabin channels only exist in a 200-channel export, so
         # the examples must cover both "cannot reach them" and "drives them".

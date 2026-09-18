@@ -77,6 +77,12 @@ REJECTED_FILESYSTEMS = {"ntfs": "NTFS"}
 # README, "Audio file requirements".
 REQUIRED_SAMPLE_RATE = 44100
 
+# README, "USB flash drive requirements": more than one show on a drive needs
+# 2023.44.25+, while a single show needs the v11.0 (2021.44.25) baseline from
+# "Supported Vehicles".  The drive cannot tell which the car is running.
+MULTI_SHOW_SOFTWARE = "2023.44.25"
+BASE_SOFTWARE = "v11.0 (2021.44.25)"
+
 # macOS writes these next to the real files on a FAT/exFAT volume.  They are
 # not shows, but `._show.fseq` does sit in the folder next to `show.fseq`.
 _APPLEDOUBLE_PREFIX = "._"
@@ -655,6 +661,36 @@ def _split_show_folder(show_folder: str) -> Tuple[Dict[str, str],
     return fseqs, audio, subfolders, sidecars, others
 
 
+def check_vehicle_support(shows: List[Show]) -> List[Finding]:
+    """What the drive cannot tell you: whether the car can play it.
+
+    Everything else here is checkable from the files. Vehicle support is not,
+    and it is the other half of "the car will not play my show", so the
+    requirements are stated rather than left to be discovered.
+    """
+    playable = [s for s in shows if s.playable]
+    findings = [Finding(
+        INFO, "VEHICLE_SUPPORT",
+        "The car must be a supported vehicle running {} or newer.".format(
+            BASE_SOFTWARE),
+        "Custom shows run on Model S (2021+), Model 3, Model X (2021+), "
+        "Model Y and Cybertruck. Playing one is a vehicle capability, so a "
+        "vehicle that is not on that list cannot be made to play a show by "
+        "changing anything on this drive.",
+        readme="Supported Vehicles")]
+
+    if len(playable) > 1:
+        findings.append(Finding(
+            INFO, "MULTI_SHOW_SOFTWARE",
+            "{} shows on one drive needs {} or newer.".format(
+                len(playable), MULTI_SHOW_SOFTWARE),
+            "Support for more than one custom show on a drive arrived in "
+            "{}. On an older vehicle software the extra shows are not "
+            "offered; the drive itself is fine.".format(MULTI_SHOW_SOFTWARE),
+            readme="USB flash drive requirements"))
+    return findings
+
+
 def check_show_folder(show_folder: str) -> Tuple[List[Show], List[Finding]]:
     fseqs, audio, subfolders, sidecars, others = _split_show_folder(show_folder)
     findings: List[Finding] = []
@@ -890,6 +926,7 @@ def check_drive(path: str) -> DriveReport:
         shows, folder_findings = check_show_folder(show_folder)
         report.shows = shows
         report.findings.extend(folder_findings)
+        report.findings.extend(check_vehicle_support(shows))
 
     report.findings.sort(key=lambda f: _SEVERITY_ORDER[f.severity])
     return report

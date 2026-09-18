@@ -20,6 +20,11 @@ Multiple light show repositories can be found online. A screenshot from [XLightS
 - Model Y
 - Cybertruck
 - Running Software v11.0 (2021.44.25) or newer
+
+Both the vehicle and the software version have to qualify. Model S and Model X are supported from the 2021 refresh onwards, so an earlier car is not on the list however new its software is, and a listed vehicle still needs v11.0 (2021.44.25) or newer.
+
+Playing a custom show is a vehicle capability. It cannot be enabled by the show file, by the USB flash drive, or by anything in this repository, so there is no workaround to try if your vehicle is not listed above. Requests to support another vehicle belong in an [issue](https://github.com/teslamotors/light-show/issues) for the maintainers.
+
 ### USB flash drive requirements
 - Must contain a base-level folder called "LightShow" (without quotation marks and case sensitive).
 - The LightShow folder must contain at least 2 files:
@@ -59,7 +64,8 @@ Multiple light show repositories can be found online. A screenshot from [XLightS
 [reddit.com/r/TeslaLightShow/](https://www.reddit.com/r/TeslaLightShow/)
 
 ### Debug
-- If the popup title is "Light Show" instead of "Custom Light Show", then the requirements are not being met for the USB flash drive formatting and/or required folder and files.
+- If the popup title is "Light Show" instead of "Custom Light Show", then the requirements are not being met for the USB flash drive formatting and/or required folder and files. [usb_check.py](#usb_check) reports which requirement a drive is missing.
+- If Toybox has no Light Show entry at all, check the vehicle and software version against [Supported Vehicles](#supported-vehicles) before looking at the drive.
 - Error messages will be provided if the required files exist but there is a problem with the light show sequence file.
 
 ## <a name="show_limits"></a>General Limitations of Custom Shows
@@ -257,6 +263,22 @@ The vehicle keys are ```models```, ```modelx```, ```model3```, ```modely``` and 
 
 The report opens with an [Interior RGB](#interior_rgb) section, which is the same on every vehicle: it lists what the show does with the Center Front Display and the five accent segments, and says so when a show cannot reach them at all.
 
+Where a vehicle has builds that are wired differently, the report adds an "Also on ..." block under that vehicle listing only what changes for those cars. The one the README documents is Model 3 built before October 2020, whose tail and license plate lights share an output:
+
+```
+Model 3  -  0 error(s), 0 warning(s), 0 note(s)
+========================================================================
+  This show renders the same way the xLights preview shows it.
+
+  Also on Model 3 built before October 2020:
+  ----------------------------------------------------------------------
+
+    [WARNING] or-group-collapse at 0:00.000
+      Left tail + right tail (also drives the license plate lights) share
+      one output on Model 3 built before October 2020, but this show drives
+      them separately
+```
+
 A Closure command budget section follows it, also the same on every vehicle. Each closure has its own [actuation limit](#closures) for a show, and the xLights preview will happily animate a closure far past it, so the budget is easy to overrun without noticing:
 
 ```
@@ -303,6 +325,7 @@ Model 3  -  4 error(s), 7 warning(s), 19 note(s)
 | ```ramp-ignored``` | A ramping effect on a channel that is boolean on this vehicle, so it switches instantly here. |
 | ```channel-not-present``` | The show drives a light or closure this vehicle does not have. |
 | ```channel-optional-hardware``` | The light is missing on some builds of this vehicle, for example front fog on Model 3 Standard Range +. |
+| ```channel-has-no-effect``` | The light is fitted but follows another channel on this build, so its own channel does nothing. |
 | ```interior-not-in-export``` | The show has no [interior RGB](#interior_rgb) channels, because it was exported from an older project directory. |
 | ```interior-unused``` | The show can drive the interior lights and leaves every segment dark. |
 | ```interior-accents-without-display``` | Only the optional accent segments are driven, so nothing lights up in a car without Interior Accent Lights. |
