@@ -497,6 +497,7 @@ Model 3  -  4 error(s), 7 warning(s), 19 note(s)
 | ```or-group-collapse``` | Channels that the preview animates separately are wired to one output on this vehicle, and the show drives them differently. See [light channel mapping details](#light_channel_mapping_details). |
 | ```or-group-never-off``` | Channels sharing one output blink at different times but never leave a shared gap, so the light sits solid instead of flashing. |
 | ```ramp-too-short``` | A ramping effect ends long before the ramp completes, so the light never gets near its setpoint. Most often a channel that is boolean on Model S but ramping on Model 3/Y. |
+| ```ramp-duration-indeterminate``` | A ramping effect is held for a length between the two guarantees above, so where the light ends up is not specified. |
 | ```ramp-leader-missing``` | Channel 5 or 6 ramps while Channel 4 has no effect to define the duration. See [Ramping Channels 4-6](#ramping_channels_4_6). |
 | ```ramp-ignored``` | A ramping effect on a channel that is boolean on this vehicle, so it switches instantly here. |
 | ```channel-not-present``` | The show drives a light or closure this vehicle does not have. |
@@ -563,6 +564,16 @@ To command a light to turn on or off and follow a ramp profile, place the effect
 
 The keyboard layout is designed to be easy to use. Note that the effect types are grouped into vertical keyboard rows and sorted by duration.
 
+**The percentage selects an effect, it is not a brightness.** 20% does not mean "dim to 20%"; it means *turn off over 1000 ms*. The lower half of the table turns the light **off** and the upper half turns it **on**, so a value chosen as though it were an intensity will often ramp the opposite way to the one intended. Outside the Cybertruck [full brightness channels](#full-brightness-control-channels) there is no way to hold a light at a partial level at all.
+
+If a light ramps the wrong way, the quickest check is what the exported file actually contains - [fseq_export.py](#reading_an_fseq) prints the effect behind every value:
+
+```
+> python3 tools/fseq_export.py lightshow.fseq --channels 3,4
+channel,name,kind,start_ms,end_ms,duration_ms,frames,value,percent,effect
+3,Left Inner Main Beam,light,1000,2000,1000,50,51,20,off over 1000 ms
+```
+
 <img src="/images/keyboard_shortcuts.png?raw=true" width="800" />
 
 #### Other notes
@@ -570,6 +581,7 @@ The keyboard layout is designed to be easy to use. Note that the effect types ar
 - If an xLights effect is longer than the ramping duration, then the light will stay at 0% or 100% intensity after it finishes ramping.
 - Ramping effects can end early or be reversed before completion, and the light will immediately start following the new profile that is commanded.
 - To guarantee that a light reaches the 0% or 100% setpoint, the xLights effect must have a duration at least 50ms greater than the ramp duration. Conversely, to guarantee that a light does not fully reach the 0% or 100% setpoint, the xLights effect must have a duration at least 100ms less than the ramp duration.
+    - Between those two lengths nothing is guaranteed either way, and a show can behave differently from one car to the next there. [vehicle_preview.py](#vehicle_preview) reports effects held in that band as ```ramp-duration-indeterminate```; several of the shipped [examples](#what_is_in_examples) have them.
 - Ramping Channels 4-6 have some unique aspects compared to other lights in order to use them effectively - see notes in [Ramping Channels 4-6](#ramping_channels_4_6).
 
 #### Ramping light examples

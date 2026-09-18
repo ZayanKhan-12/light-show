@@ -125,6 +125,35 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### Two guarantees with a gap between them
+
+[#89](https://github.com/teslamotors/light-show/issues/89) reports an inner
+main beam ramping **on** when a fade to off was intended, on a 2022 Model Y,
+while Channel 4 with the same command faded off correctly. It cannot be
+reproduced from here, and the encoding is not changed on one report.
+
+Two things were worth fixing anyway, both visible in how the issue is worded.
+
+**The percentage is an effect, not an intensity.** The reporter describes "a
+1 second ramp at 20% intensity". In `RAMP_CODES`, 20% *is* "Turn off; 1000 ms"
+— they may well have got exactly what they asked for. But the lower half of
+that table turns a light off and the upper half turns it on, so a number
+picked as though it were a brightness ramps the opposite way. `README.md`
+said this only obliquely, in a note below the table; it now says it beside the
+table, in bold, with `fseq_export.py` offered as the way to see what a file
+actually contains.
+
+**`_check_ramp_reachability` encoded one of the README's two guarantees.** The
+README promises a light reaches its setpoint at ramp + 50 ms, and promises it
+does not at ramp − 100 ms, and says nothing about the 150 ms between. The
+check treated everything under ramp + 50 as short, which lumped "guaranteed to
+fall short" together with "not specified". They are now separate findings, and
+the band is not hypothetical: `lightshow_example_2` has 72 effects in it,
+example 3 has 54, example 5 has 48.
+
+That band is the shape of an unreproducible ramp complaint, so naming it is
+worth more than guessing at the vehicle's behaviour.
+
 ### Say what is in the box before someone downloads it
 
 [#87](https://github.com/teslamotors/light-show/issues/87) asks for the `.xsq`
