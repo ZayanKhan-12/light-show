@@ -118,6 +118,47 @@ class LocateTests(ShowFolderTestCase):
         self.assertEqual(self.codes(report), ["not-extracted"])
         self.assertFalse(report.is_show_folder)
 
+    def test_a_truncated_download_is_told_apart_from_an_unextracted_one(self):
+        """Issue 101: a download that stopped part way looks like a .zip."""
+        good = os.path.join(self.tmpdir, "tesla_xlights_show_folder.zip")
+        with zipfile.ZipFile(good, "w") as bundle:
+            bundle.writestr("tesla_xlights_show_folder/x", "y")
+        with open(good, "rb") as handle:
+            whole = handle.read()
+
+        broken = os.path.join(self.tmpdir, "half.zip")
+        with open(broken, "wb") as handle:
+            handle.write(whole[:len(whole) // 2])
+
+        self.assertEqual(self.codes(sf.check_show_folder(broken)),
+                         ["download-incomplete"])
+        self.assertEqual(self.codes(sf.check_show_folder(good)),
+                         ["not-extracted"])
+
+    def test_an_empty_archive_is_reported_as_incomplete(self):
+        path = os.path.join(self.tmpdir, "empty.zip")
+        with zipfile.ZipFile(path, "w"):
+            pass
+        findings = sf.check_show_folder(path).findings
+
+        self.assertEqual([f.code for f in findings], ["download-incomplete"])
+        self.assertIn("empty", findings[0].detail)
+
+    def test_an_intact_archive_says_it_is_intact(self):
+        path = os.path.join(self.tmpdir, "show.zip")
+        with zipfile.ZipFile(path, "w") as bundle:
+            bundle.writestr("show/x", "y")
+        findings = sf.check_show_folder(path).findings
+
+        self.assertIn("intact", findings[0].detail)
+
+    def test_the_shipped_archives_are_readable(self):
+        """What a download is supposed to arrive as."""
+        for name in ("xlights/tesla_xlights_show_folder.zip",
+                     "xlights/tesla_xlights_cross_vehicle_folder.zip"):
+            path = os.path.join(REPO_ROOT, name)
+            self.assertIsNone(sf._zip_problem(path), name)
+
     def test_a_folder_holding_only_the_zip_says_to_unzip_it(self):
         with zipfile.ZipFile(
                 os.path.join(self.tmpdir,

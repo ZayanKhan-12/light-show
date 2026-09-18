@@ -124,6 +124,12 @@ Make sure the file is encoded with a sample rate of 44.1 kHz; less common 48 kHz
 1. Visit [xLights Downloads](https://xlights.org/releases/) to download and install the xLights application.
 2. Download and unzip [tesla_xlights_show_folder.zip](xlights/tesla_xlights_show_folder.zip?raw=true), which is the Tesla xLights bare project directory.
    - It is recommended to keep the project directory structure as-is and leave all files in their default locations.
+   - If that link does not work for you, the same file can be had by opening [the file's page](xlights/tesla_xlights_show_folder.zip) and using GitHub's download button, by cloning the repository (```git clone https://github.com/teslamotors/light-show.git```), or by downloading the whole repository as a ZIP from the green Code button.
+   - A download that stops part way leaves a file of the right name that will not open. [show_folder_check.py](#show_folder_check) tells that apart from an archive you simply have not extracted yet:
+
+     ```
+     python3 tools/show_folder_check.py ~/Downloads/tesla_xlights_show_folder.zip
+     ```
 3. Open the xLights application.
 4. **IMPORTANT:** In File > Preferences > Sequences > FSEQ Version, select "V2 Uncompressed".
 
