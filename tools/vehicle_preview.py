@@ -468,6 +468,21 @@ class Show:
     def duration_ms(self) -> int:
         return self.frame_count * self.step_time_ms
 
+    def first_lit_ms(self) -> Optional[int]:
+        """When anything first comes on.
+
+        A show can begin with darkness on purpose -- "The Arrival" in
+        examples/ is dark for its first 5.3 s while the track opens -- so this
+        is a fact to report rather than a fault. It is the number to compare
+        against when a show looks like it starts late:
+        https://github.com/teslamotors/light-show/issues/78.
+        """
+        width = self.channel_count
+        for frame in range(self.frame_count):
+            if any(self.data[frame * width:(frame + 1) * width]):
+                return frame * self.step_time_ms
+        return None
+
     def series(self, channel: int) -> bytes:
         """All frames for one 1-based channel, as raw bytes."""
         return self.data[channel - 1::self.channel_count]
@@ -1680,6 +1695,12 @@ def render_report(show: Show, results: Dict[str, List[Finding]], verbose: bool,
     out: List[str] = []
     out.append("{} frames, {} ms per frame, total duration {}.".format(
         show.frame_count, show.step_time_ms, _format_time(show.duration_ms)))
+    first_lit = show.first_lit_ms()
+    if first_lit is None:
+        out.append("Nothing in this show is ever lit.")
+    elif first_lit:
+        out.append("First light at {}; the show is dark before that.".format(
+            _format_time(first_lit)))
     out.append("")
     if interior is not None:
         out.extend(render_interior(interior_usage(show), interior, verbose))
@@ -1774,6 +1795,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "frame_count": show.frame_count,
             "step_time_ms": show.step_time_ms,
             "duration_ms": show.duration_ms,
+            "first_lit_ms": show.first_lit_ms(),
             "interior": {
                 "segments": [u.as_dict() for u in interior_usage(show)],
                 "findings": [f.as_dict() for f in interior],

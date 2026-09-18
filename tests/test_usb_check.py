@@ -534,6 +534,18 @@ class AudioHeaderTests(UsbCheckTestCase):
         self.assertEqual(findings[0].severity, uc.INFO)
         self.assertIn("sequence runs", findings[0].summary)
 
+    def test_the_mismatch_names_the_symptom_it_causes(self):
+        # Issue 78: a trimmed intro on one file is how the music ends up
+        # running ahead of the lights.
+        drive = self.drive()
+        drive.add_show("short-audio", frames=5000, step_time=20,
+                       audio_seconds=1.0)
+        report = uc.check_drive(self.tmpdir)
+        finding = [f for f in report.all_findings()
+                   if f.code == "LENGTH_MISMATCH"][0]
+
+        self.assertIn("ahead of the lights", finding.detail)
+
     def test_matching_lengths_produce_no_note(self):
         drive = self.drive()
         drive.add_show("matched", frames=100, step_time=20, audio_seconds=2.0)

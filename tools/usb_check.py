@@ -866,9 +866,11 @@ def _check_audio(show: Show) -> None:
                 INFO, "LENGTH_MISMATCH",
                 "The {} runs {} longer than the {}.".format(
                     longer, _format_duration(abs(drift)), shorter),
-                "Sequence {}, audio {}{}. The two are not required to match, "
-                "but a large gap usually means the show was sequenced against "
-                "a different copy of the track.".format(
+                "Sequence {}, audio {}{}. The two are not required to "
+                "match, but a large gap usually means the show was sequenced "
+                "against a different copy of the track, and a trimmed intro "
+                "on one of them is the usual reason the music ends up running "
+                "ahead of the lights.".format(
                     _format_duration(show.duration_ms),
                     _format_duration(audio.duration_ms),
                     " (estimated)" if audio.estimated else ""),
