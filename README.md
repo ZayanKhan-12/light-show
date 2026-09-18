@@ -155,6 +155,10 @@ Make sure the file is encoded with a sample rate of 44.1 kHz; less common 48 kHz
 
 9. Note that the previewed Tesla Model S combined with the Cybertruck include the superset of lights and closures that are needed for all supported vehicles, and should be used to generate shows for all vehicle types. See [light channel locations](#light-channel-locations) for information about where the lights are on each vehicle.
 
+    <a name="hiding_a_vehicle"></a>The two vehicles in the preview are **View Objects** - 3D scenery named "Tesla Model S" and "Cybertruck" - rather than light models. They own no channels, so making one inactive in the Layout tab changes what you look at and nothing about the show: the lights it hides are still there, still sequenced and still exported. If you only sequence one kind of car and find the other distracting, that is the thing to switch off ([#107](https://github.com/teslamotors/light-show/issues/107)).
+
+    Keep in mind while it is hidden that the channels it stood for do not disappear with it. The Cybertruck mesh is what shows you the [light bars](#cybertruck_mapping), the frunk and the bed lights, and a show that drives them still drives them whether or not you can see it.
+
 ## <a name="what_is_in_examples"></a>What is in examples/
 The archives in [examples/](examples) are large, so here is what is in each one before you download it. An **.fseq** is the show a car plays; an **.xsq** is the xLights sequence it was built from, which is what you need to edit it.
 
