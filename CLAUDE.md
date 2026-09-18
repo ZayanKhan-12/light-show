@@ -126,6 +126,37 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### Same name, different show
+
+[#102](https://github.com/teslamotors/light-show/issues/102) asks for the
+`.xsq` of *The Arrival* and *Carol of the Bells*, and is careful about it:
+
+> I was able to find the 5 The Arrival files of the 5 cybertrucks but **not
+> the original which is included in all the vehicles**
+
+They are right that those are two different things, and the repository gave
+them no way to confirm it. `examples/lightshow_example_3_The_Arrival_5_Car`
+carries a built-in show's name, so the obvious reading is that it is that
+show, published.
+
+It is not, and `coverage()` settles it without anyone having to assert
+anything: the shipped arrangement lands **17%** of its lit time on a Model S,
+Model X, Model 3 or Model Y, and **100%** on a Cybertruck. A show that plays
+in every vehicle cannot be one that is five-sixths invisible on four of them.
+It is the same 1:50 track arranged for five cars around the light bars.
+
+Two habits:
+
+- **Answer "is this the same show?" with a measurement.** The name, the
+  duration and the song all match; only the channels disagree, and they are
+  the part that decides it.
+- **Record an absence as a fact that can go stale.** Ready for Assault and
+  Cyber Symphony each ship a one-car sequence beside their multi-car set;
+  The Arrival does not, which is precisely the gap the issue names. A test
+  asserts no single-car Arrival exists and says to update the README if one
+  ever does, so the paragraph claiming it is missing cannot outlive the
+  claim.
+
 ### Check the artifact before blaming the browser
 
 [#101](https://github.com/teslamotors/light-show/issues/101) is "why cant i

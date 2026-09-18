@@ -657,6 +657,21 @@ class ShippedShowCoverageTests(unittest.TestCase):
                       "lightshow_example_5"):
             self.assertLess(spread[label].not_fitted_share, 0.2, label)
 
+    def test_the_shipped_arrival_cannot_be_the_built_in_show(self):
+        """Issue 102, as evidence rather than assertion.
+
+        The built-in "The Arrival" plays on every supported vehicle. The
+        arrangement shipped here puts most of itself on the Cybertruck light
+        bars, so on any other vehicle it is mostly invisible -- which is what
+        makes it a different arrangement rather than the same show.
+        """
+        spread = self.coverage_by_example("models")["lightshow_example_3"]
+        cybertruck = self.coverage_by_example(
+            "cybertruck")["lightshow_example_3"]
+
+        self.assertLess(spread.fitted / spread.total, 0.25)
+        self.assertGreater(cybertruck.fitted / cybertruck.total, 0.95)
+
     def test_it_cuts_both_ways(self):
         """The older shows lose a third of themselves on a Cybertruck.
 

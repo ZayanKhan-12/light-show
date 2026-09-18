@@ -156,6 +156,31 @@ class ShippedExamplesTests(unittest.TestCase):
         for name, example in self.examples.items():
             self.assertGreater(example.audio, 0, name)
 
+    def test_which_multi_car_shows_have_a_single_car_publication(self):
+        """Issue 102, stated as a fact that can go stale.
+
+        Ready for Assault and Cyber Symphony each ship a one-car sequence
+        beside their multi-car set. The Arrival does not, which is exactly
+        what the issue asks for. If that changes, the README paragraph
+        claiming it does not exist has to change with it.
+        """
+        multi = {name: e for name, e in self.examples.items() if e.cars > 1}
+        single = {name for name, e in self.examples.items() if e.cars == 1}
+
+        self.assertIn("lightshow_example_6_Ready_for_Assault_1_Car", single)
+        self.assertIn("lightshow_example_7_Cyber_Symphony_1_Car", single)
+        self.assertIn("lightshow_example_3_The_Arrival_5_Car", multi)
+        self.assertEqual(
+            [n for n in single if "Arrival" in n], [],
+            "a single-car Arrival now ships; update the README")
+
+    def test_the_readme_records_that_gap(self):
+        with open(os.path.join(REPO_ROOT, "README.md"),
+                  encoding="utf-8") as handle:
+            readme = handle.read()
+        self.assertIn("no equivalent single-car publication of *The Arrival*",
+                      readme)
+
     def test_the_readme_table_matches_this_output(self):
         """The table in README.md is generated; keep it that way."""
         with open(os.path.join(REPO_ROOT, "README.md"),

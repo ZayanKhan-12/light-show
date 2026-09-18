@@ -310,6 +310,26 @@ jobs:
               "expected the shipped shows to use the unspecified band"
           PYEOF
 
+      - name: Show that a shared name is not a shared show
+        # Issue #102: the shipped Arrival is a five-car arrangement, not the
+        # single-car show built into every vehicle. The channels say so.
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import sys
+          sys.path.insert(0, "tools")
+          import vehicle_preview as vp
+          path = ("examples/lightshow_example_3_The_Arrival_5_Car/"
+                  "Car #1/LightShow/lightshow.fseq")
+          show = vp.read_fseq(path)
+          for key in ("models", "model3", "cybertruck"):
+              spread = vp.coverage(show, vp.VEHICLES[key])
+              share = 100 * spread.fitted / spread.total
+              print("%-12s %3.0f%% of the shipped Arrival lands on this car" % (key, share))
+          models = vp.coverage(show, vp.VEHICLES["models"])
+          assert models.fitted / models.total < 0.25, "expected a light bar show"
+          PYEOF
+
       - name: Check the examples table still matches examples/
         # Issue #87: the table in README.md is generated, so it cannot be
         # allowed to drift from the archives it describes.
