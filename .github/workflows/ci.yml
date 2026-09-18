@@ -87,3 +87,44 @@ jobs:
             exit 1
           fi
           echo "Analysed $found example show(s)."
+
+      - name: Check a multi-show USB layout end to end
+        # Builds the layout issue #48 asked for -- several shows side by side
+        # in one LightShow folder -- out of the shipped examples, and asserts
+        # the tool lists all of them.
+        run: |
+          set -euo pipefail
+          rm -rf _drive && mkdir -p _drive/LightShow
+          count=0
+          while IFS= read -r show; do
+            dir=$(dirname "$show")
+            audio=$(find "$dir" -maxdepth 1 \( -name '*.wav' -o -name '*.mp3' \) | sort | head -1)
+            if [ -z "$audio" ]; then continue; fi
+            count=$((count + 1))
+            cp "$show" "_drive/LightShow/show-$count.fseq"
+            cp "$audio" "_drive/LightShow/show-$count.${audio##*.}"
+            if [ "$count" -ge 3 ]; then break; fi
+          done < <(find examples _examples -name '*.fseq' | sort)
+          if [ "$count" -lt 2 ]; then
+            echo "Need at least two example shows to build a multi-show drive" >&2
+            exit 1
+          fi
+          python3 tools/usb_check.py _drive -v
+          python3 tools/usb_check.py _drive --json | python3 -c "
+          import json, sys
+          report = json.load(sys.stdin)
+          assert report['playable_show_count'] == $count, report
+          print('picker lists', report['playable_show_count'], 'shows')
+          "
+
+      - name: Check that a broken layout is rejected
+        # The subfolder-per-show layout from issue #48 must exit non-zero.
+        run: |
+          set -euo pipefail
+          rm -rf _baddrive && mkdir -p _baddrive/LightShow/show1
+          cp _drive/LightShow/show-1.fseq _baddrive/LightShow/show1/
+          if python3 tools/usb_check.py _baddrive; then
+            echo "usb_check accepted a layout the car cannot read" >&2
+            exit 1
+          fi
+          echo "usb_check rejected the subfolder layout as expected."
