@@ -29,6 +29,7 @@ import argparse
 import dataclasses
 import json
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
@@ -277,6 +278,99 @@ def _read_controllers(folder: str) -> Tuple[int, int]:
     return len(controllers), channels
 
 
+# A per-car model in the cross-vehicle folder is named "<car> <model>", and
+# its StartChannel names that car's controller: "!Model S 3:107".  Extending
+# the folder past five cars means repeating all of that by hand, which is what
+# https://github.com/teslamotors/light-show/issues/134 asks about.
+_CAR_MODEL = re.compile(r"^(\d+) (.+)$")
+_START_CHANNEL_CONTROLLER = re.compile(r"^!([^:]+):")
+MAPPING_PREFIX = "cross_vehicle_mapping_"
+
+
+def _car_models(folder: str) -> Dict[int, Dict[str, str]]:
+    """{car number: {model base name: StartChannel}} from the show folder."""
+    path = os.path.join(folder, RGBEFFECTS)
+    try:
+        root = ET.parse(path).getroot()
+    except (ET.ParseError, OSError):
+        return {}
+    models = root.find("models")
+    found: Dict[int, Dict[str, str]] = {}
+    for model in (models if models is not None else []):
+        match = _CAR_MODEL.match(model.get("name") or "")
+        if not match:
+            continue
+        car = int(match.group(1))
+        found.setdefault(car, {})[match.group(2)] = \
+            model.get("StartChannel") or ""
+    return found
+
+
+def _check_cross_vehicle(folder: str, report: "ShowFolder") -> None:
+    """Whether every car in a cross-vehicle folder matches the others."""
+    cars = _car_models(folder)
+    if len(cars) < 2:
+        return
+
+    # Every car should carry the same set of models.
+    counts = {car: len(models) for car, models in cars.items()}
+    if len(set(counts.values())) > 1:
+        biggest = max(counts.values())
+        short = sorted(car for car, n in counts.items() if n < biggest)
+        missing = {
+            car: sorted(set(cars[max(counts, key=counts.get)]) - set(cars[car]))
+            for car in short}
+        report.findings.append(Finding(
+            ERROR, "cars-do-not-match",
+            "The cars do not have the same models.",
+            "Car {} has fewer than the {} the fullest car has. Missing: "
+            "{}. Every car needs the whole set, or effects placed on the "
+            "groups will not reach it.".format(
+                ", ".join(str(c) for c in short), biggest,
+                "; ".join("car {}: {}".format(car, ", ".join(names[:4]))
+                          for car, names in missing.items())),
+            readme="Programming a show with cross-vehicle animations"))
+
+    # Each car's models must sit on that car's controller.
+    for car, models in sorted(cars.items()):
+        wrong = []
+        for name, start in sorted(models.items()):
+            match = _START_CHANNEL_CONTROLLER.match(start)
+            if match and not match.group(1).rstrip().endswith(str(car)):
+                wrong.append("{} -> {}".format(name, start))
+        if wrong:
+            report.findings.append(Finding(
+                ERROR, "car-on-wrong-controller",
+                "Car {} has {} model(s) on another car's controller.".format(
+                    car, len(wrong)),
+                "A duplicated model keeps the StartChannel it was copied "
+                "from, so it drives the car it came from. Found: {}.".format(
+                    ", ".join(wrong[:3])),
+                readme="Programming a show with cross-vehicle animations"))
+
+    # Exporting is per car, and each car needs its own mapping file.
+    present = {name for name in _entries(folder)
+               if name.startswith(MAPPING_PREFIX)}
+    for car in sorted(cars):
+        expected = "{}{}.xmap".format(MAPPING_PREFIX, car)
+        if expected not in present:
+            report.findings.append(Finding(
+                WARNING, "no-mapping-for-car",
+                "There is no {} for car {}.".format(expected, car),
+                "The show is exported once per car by importing the "
+                "cross-vehicle sequence with that car's mapping. Without the "
+                "file there is nothing to select at that step.",
+                readme="Exporting the show"))
+
+    report.findings.append(Finding(
+        INFO, "cross-vehicle-cars",
+        "This folder is set up for {} cars.".format(len(cars)),
+        "Each car has its own controller, its own copy of every model named "
+        "\"<car> <model>\", and its own mapping file. Adding one means "
+        "repeating all three.",
+        readme="Programming a show with cross-vehicle animations"))
+
+
 def _read_models(folder: str) -> int:
     path = os.path.join(folder, RGBEFFECTS)
     try:
@@ -350,6 +444,9 @@ def check_show_folder(path: str) -> ShowFolder:
             "Tesla lights will appear in the sequencer.",
             readme="Getting started with the Tesla xLights project "
                    "directory"))
+
+    if report.cars > 1:
+        _check_cross_vehicle(folder, report)
 
     report.audio = _read_audio(folder)
     _check_audio(report)

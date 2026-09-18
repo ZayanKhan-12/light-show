@@ -126,6 +126,37 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### A car is three things, so say all three
+
+[#134](https://github.com/teslamotors/light-show/issues/134) asks how to
+duplicate the model in the cross-vehicle folder to run more than five cars.
+The eight-car *Ready for Assault* in `examples/` proves it is possible, and
+nothing wrote down how.
+
+Read out of the shipped folder, a car is three things, not one:
+
+- a controller in `xlights_networks.xml`, `Model S 1` to `Model S 5`, each
+  200 channels;
+- 77 models named `<car> <model>`, each with a `StartChannel` naming that
+  car's controller (`!Model S 3:107`), spaced about 500 units apart along Z;
+- an export mapping, `cross_vehicle_mapping_3.xmap`.
+
+Miss any one and it fails differently: a missing model is silently skipped by
+group effects, a model left on the controller it was copied from drives the
+wrong car, and a missing mapping only bites at export time, after the
+sequencing is done.
+
+**I did not write a generator.** Cloning 77 models across an XML file is
+mechanical enough to automate, but the result has to open in xLights and I
+cannot check that here, so a generator would be shipping something that looks
+right structurally and might not be. `show_folder_check.py` verifies instead:
+it is read-only, it catches all three mistakes, and it was tested by building
+a six-car folder with each of them made deliberately.
+
+That is the trade to reach for whenever output cannot be verified in the tool
+that consumes it — **check the thing the user built rather than build it for
+them.**
+
 ### Two accounts is still not a mapping
 
 [#113](https://github.com/teslamotors/light-show/issues/113) asks for the

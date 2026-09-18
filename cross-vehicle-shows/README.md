@@ -72,6 +72,23 @@ Before you can enjoy the show on up to five vehicles, you need to export the eff
     <img src="/images/convert_render_all.png?raw=true" width="300" />
 8. Repeat steps 3-7 for each car.
 
+## <a name="more_cars"></a>Going past five cars
+The folder ships set up for five, and the eight-car *Ready for Assault* in
+[examples/](../examples) shows more is possible ([#134](https://github.com/teslamotors/light-show/issues/134)).
+There is no supported way to do it from inside xLights alone, because a car here is three things rather than one. Per car, the folder has:
+
+- **a controller** in `xlights_networks.xml`, named `Model S 1` to `Model S 5`, each with `MaxChannels="200"`;
+- **its own copy of every model**, 77 of them, named `<car> <model>` - `3 Rear Light Bar`, `3 Left Front Turn` - with a `StartChannel` naming that car's controller, `!Model S 3:107`, and positioned about 500 units apart along Z from its neighbour;
+- **its own export mapping**, `cross_vehicle_mapping_3.xmap`, which is what you select at step 5 of [exporting the show](#exporting-the-show).
+
+Adding a sixth car means repeating all three, then adding the new models to the groups and views you sequence against (`Front 6`, `Rear 6`, and the `All ...` groups). Duplicating 77 models by hand is where this goes wrong, so check the result before spending an evening on it:
+
+```
+python3 ../tools/show_folder_check.py path/to/your_cross_vehicle_folder
+```
+
+It reports a car missing models the others have, a duplicated model still pointing at the controller it was copied from - the usual one, because a copy keeps its `StartChannel` - and a car with no mapping file to export with.
+
 ## Checking the exported set
 Steps 3-7 are repeated once per car, and the show only works if every car's file
 agrees with the others. Put each car's files in their own folder and check the
