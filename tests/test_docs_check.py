@@ -283,6 +283,40 @@ class RealCommunityListTests(unittest.TestCase):
             self.assertNotIn("?", url)
 
 
+class DownloadRouteTests(unittest.TestCase):
+    """The project folder must not be reachable by only one host.
+
+    Issues 101 and 106 are both "I cannot download the show folder", and a
+    ?raw=true link leaves github.com for raw.githubusercontent.com, which
+    some networks block on its own. The README has to offer routes that do
+    not share that dependency.
+    """
+
+    def readme(self):
+        with open(os.path.join(REPO_ROOT, "README.md"),
+                  encoding="utf-8") as handle:
+            return handle.read()
+
+    def test_every_documented_host_is_named(self):
+        text = self.readme()
+        for host in ("raw.githubusercontent.com", "github.com",
+                     "codeload.github.com"):
+            self.assertIn(host, text, host)
+
+    def test_the_alternatives_are_still_documented(self):
+        text = self.readme()
+        self.assertIn("git clone https://github.com/teslamotors/light-show.git",
+                      text)
+        self.assertIn("Download ZIP", text)
+
+    def test_the_symptom_is_named_so_it_can_be_searched_for(self):
+        self.assertIn("file not found", self.readme())
+
+    def test_it_says_no_lfs_is_involved(self):
+        # The repository-side cause, ruled out in the same place.
+        self.assertIn("Git LFS", self.readme())
+
+
 class UnreferencedImageTests(DocsCheckTestCase):
     def test_an_unused_image_is_a_note(self):
         self.repo.touch("images/used.png")

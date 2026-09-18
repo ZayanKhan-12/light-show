@@ -157,7 +157,7 @@ Two habits:
   ever does, so the paragraph claiming it is missing cannot outlive the
   claim.
 
-### Check the artifact before blaming the browser
+### Check the artifact, then check which host it comes from
 
 [#101](https://github.com/teslamotors/light-show/issues/101) is "why cant i
 download the tesla xlights folder", with a screenshot, and a second owner
@@ -186,6 +186,27 @@ now.
 When a report cannot be reproduced, the useful move is to verify what you
 control, say plainly that you have, and give the reporter a way to tell which
 side the problem is on.
+
+[#106](https://github.com/teslamotors/light-show/issues/106) is the same
+complaint with the detail #101 was missing: "an error message that the file is
+not found", and the exact URL. That is a 404 on one link while the rest of
+GitHub works, and the cause is checkable:
+
+    ?raw=true          -> raw.githubusercontent.com
+    Download ZIP       -> codeload.github.com
+    git clone          -> github.com
+
+A `?raw=true` link **leaves github.com**. Some networks and DNS filters block
+`raw.githubusercontent.com` on its own, which looks exactly like a missing
+file. The routes added for #101 happen to use different hosts, and saying so
+is what makes them useful to somebody behind a filter — otherwise they read as
+three ways to do the same thing.
+
+Verify a redirect before writing it down. These were checked with
+`curl -I -L`, one read-only request each to a public URL, and the table in
+`README.md` is what came back rather than what I assumed.
+
+
 
 ### Ruling a layer out is an answer
 

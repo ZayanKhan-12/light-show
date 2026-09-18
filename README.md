@@ -124,7 +124,15 @@ Make sure the file is encoded with a sample rate of 44.1 kHz; less common 48 kHz
 1. Visit [xLights Downloads](https://xlights.org/releases/) to download and install the xLights application.
 2. Download and unzip [tesla_xlights_show_folder.zip](xlights/tesla_xlights_show_folder.zip?raw=true), which is the Tesla xLights bare project directory.
    - It is recommended to keep the project directory structure as-is and leave all files in their default locations.
-   - If that link does not work for you, the same file can be had by opening [the file's page](xlights/tesla_xlights_show_folder.zip) and using GitHub's download button, by cloning the repository (```git clone https://github.com/teslamotors/light-show.git```), or by downloading the whole repository as a ZIP from the green Code button.
+   - <a name="download_routes"></a>If that link gives "file not found" while the rest of GitHub works, the reason is usually which host it ends up on. A ```?raw=true``` link redirects to **raw.githubusercontent.com**, which is a different domain from github.com, and some networks and DNS filters block it on its own. The other routes to the same file use different hosts, so one of them normally works:
+
+     | Route | Ends up on |
+     | --- | --- |
+     | The [```?raw=true``` link](xlights/tesla_xlights_show_folder.zip?raw=true) above, or the download button on [the file's page](xlights/tesla_xlights_show_folder.zip) | ```raw.githubusercontent.com``` |
+     | ```git clone https://github.com/teslamotors/light-show.git``` - the archives are in the clone, under ```xlights/``` | ```github.com``` |
+     | Download ZIP, from the green Code button | ```codeload.github.com``` |
+
+     If none of them work, it is your connection to GitHub rather than the file: nothing here is stored with Git LFS, so every route serves the same bytes straight out of the repository.
    - A download that stops part way leaves a file of the right name that will not open. [show_folder_check.py](#show_folder_check) tells that apart from an archive you simply have not extracted yet:
 
      ```
