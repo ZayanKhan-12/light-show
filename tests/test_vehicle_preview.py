@@ -358,6 +358,183 @@ class HardwareTests(unittest.TestCase):
             self.assertEqual(findings, [], key)
 
 
+class ChannelBlockTests(unittest.TestCase):
+    """The Cybertruck-only channels between the lights and the interior."""
+
+    def test_the_ranges_match_the_channel_map(self):
+        path = os.path.join(REPO_ROOT, "xlights", "channel_map.json")
+        with open(path) as handle:
+            models = json.load(handle)["models"]
+
+        for block, model in (("Front Light Bar", "Front Light Bar"),
+                             ("Rear Light Bar", "Rear Light Bar"),
+                             ("Offroad Light Bar", "Offroad Light Bar")):
+            entry = models[model]
+            start = int(entry["StartChannel"].split(":")[-1])
+            nodes = int(entry.get("parm2") or 1) * int(entry.get("parm3") or 1)
+            found = next(b for b in vp.CHANNEL_BLOCKS if b.name == block)
+
+            self.assertEqual(found.first, start, block)
+            self.assertEqual(found.last, start + nodes - 1, block)
+
+    def test_the_counts_match_the_readme(self):
+        # README.md: 60 LEDs in the front bar, 52 in the rear, six segments
+        # on the offroad bar.
+        sizes = {b.name: len(b.channels) for b in vp.CHANNEL_BLOCKS}
+        self.assertEqual(sizes["Front Light Bar"], 60)
+        self.assertEqual(sizes["Rear Light Bar"], 52)
+        self.assertEqual(sizes["Offroad Light Bar"], 6)
+
+    def test_every_block_is_cybertruck_only(self):
+        for block in vp.CHANNEL_BLOCKS:
+            self.assertEqual(block.vehicles, ("cybertruck",), block.name)
+
+    def test_blocks_do_not_overlap_the_named_channels(self):
+        for block in vp.CHANNEL_BLOCKS:
+            for channel in block.channels:
+                self.assertNotIn(channel, vp.CHANNELS, channel)
+
+    def test_a_light_bar_led_is_named_by_position(self):
+        self.assertEqual(vp.channel_name(47), "Front Light Bar LED 1")
+        self.assertEqual(vp.channel_name(106), "Front Light Bar LED 60")
+        self.assertEqual(vp.channel_name(111), "Rear Light Bar LED 1")
+
+    def test_an_unmapped_channel_keeps_its_number(self):
+        self.assertEqual(vp.channel_name(200), "Channel 200")
+
+
+class CoverageTests(unittest.TestCase):
+    """Issue 82: how much of a show a given vehicle can actually show."""
+
+    def test_a_show_on_channels_the_vehicle_has(self):
+        show = make_show(100, {LEFT_FRONT_TURN: [(0, 50, ON_INSTANT)]})
+        spread = vp.coverage(show, vp.VEHICLES["models"])
+
+        self.assertEqual(spread.fitted, 50)
+        self.assertEqual(spread.not_fitted, 0)
+        self.assertEqual(spread.not_fitted_share, 0.0)
+
+    def test_light_bars_do_not_count_on_a_model_s(self):
+        show = make_show(100, {47: [(0, 50, ON_INSTANT)]}, channel_count=200)
+
+        self.assertEqual(vp.coverage(show, vp.VEHICLES["models"]).not_fitted,
+                         50)
+        self.assertEqual(vp.coverage(show, vp.VEHICLES["cybertruck"]).fitted,
+                         50)
+
+    def test_an_absent_channel_counts_as_not_fitted(self):
+        # Falcon doors exist only on Model X.
+        show = make_show(100, {31: [(0, 50, OPEN_CMD)]})
+
+        self.assertEqual(vp.coverage(show, vp.VEHICLES["model3"]).not_fitted,
+                         50)
+        self.assertEqual(vp.coverage(show, vp.VEHICLES["modelx"]).fitted, 50)
+
+    def test_interior_is_counted_apart_from_the_rest(self):
+        """README.md does not say which builds have the accent segments."""
+        show = make_show(100, {176: [(0, 50, ON_INSTANT)]}, channel_count=200)
+        spread = vp.coverage(show, vp.VEHICLES["models"])
+
+        self.assertEqual(spread.optional, 50)
+        self.assertEqual(spread.not_fitted, 0)
+
+    def test_an_empty_show_has_nothing_to_share_out(self):
+        spread = vp.coverage(make_show(100, {}), vp.VEHICLES["models"])
+
+        self.assertEqual(spread.total, 0)
+        self.assertEqual(spread.not_fitted_share, 0.0)
+
+    def test_a_mostly_invisible_show_is_a_warning(self):
+        show = make_show(100, {47: [(0, 50, ON_INSTANT)],
+                               LEFT_FRONT_TURN: [(0, 10, ON_INSTANT)]},
+                         channel_count=200)
+        findings = find(vp.analyze(show, vp.VEHICLES["models"]),
+                        "mostly-not-fitted")
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, vp.WARNING)
+        self.assertIn("Front Light Bar", findings[0].detail)
+
+    def test_the_same_show_is_fine_on_the_vehicle_it_was_written_for(self):
+        show = make_show(100, {47: [(0, 50, ON_INSTANT)]}, channel_count=200)
+        self.assertEqual(find(vp.analyze(show, vp.VEHICLES["cybertruck"]),
+                              "mostly-not-fitted"), [])
+
+    def test_a_show_just_over_the_line_is_warned_about(self):
+        # 60 lit frames on a light bar against 40 on a front turn.
+        show = make_show(100, {47: [(0, 60, ON_INSTANT)],
+                               LEFT_FRONT_TURN: [(0, 40, ON_INSTANT)]},
+                         channel_count=200)
+        self.assertTrue(find(vp.analyze(show, vp.VEHICLES["models"]),
+                             "mostly-not-fitted"))
+
+    def test_a_show_just_under_the_line_is_not(self):
+        show = make_show(100, {47: [(0, 40, ON_INSTANT)],
+                               LEFT_FRONT_TURN: [(0, 60, ON_INSTANT)]},
+                         channel_count=200)
+        self.assertEqual(find(vp.analyze(show, vp.VEHICLES["models"]),
+                              "mostly-not-fitted"), [])
+
+    def test_the_report_states_the_share(self):
+        show = make_show(100, {LEFT_FRONT_TURN: [(0, 50, ON_INSTANT)]})
+        text = vp.render_report(
+            show, {"models": vp.analyze(show, vp.VEHICLES["models"])},
+            verbose=False)
+        self.assertIn("100% of the lit time", text)
+
+
+class ShippedShowCoverageTests(unittest.TestCase):
+    """Issue 82 measured against the shows this repository ships."""
+
+    def coverage_by_example(self, key):
+        out = {}
+        for name, show in example_shows():
+            out.setdefault(example_label(name),
+                           vp.coverage(show, vp.VEHICLES[key]))
+        return out
+
+    def test_the_cybertruck_shows_are_mostly_invisible_on_a_model_s(self):
+        spread = self.coverage_by_example("models")
+
+        # The Arrival and Ready for Assault are written around the light bars.
+        self.assertGreater(spread["lightshow_example_3"].not_fitted_share, 0.8)
+        self.assertGreater(spread["lightshow_example_4"].not_fitted_share, 0.7)
+
+    def test_the_other_shows_play_almost_entirely_on_a_model_s(self):
+        spread = self.coverage_by_example("models")
+        for label in ("lightshow_example_1", "lightshow_example_2",
+                      "lightshow_example_5"):
+            self.assertLess(spread[label].not_fitted_share, 0.2, label)
+
+    def test_it_cuts_both_ways(self):
+        """The older shows lose a third of themselves on a Cybertruck.
+
+        A Cybertruck has no Signature lights and no Channels 4-6, so a show
+        written for a Model S is as incomplete there as a light bar show is
+        on a Model S. Neither is a defect; both are worth knowing before
+        deciding a show "does not work".
+        """
+        spread = self.coverage_by_example("cybertruck")
+
+        for label in ("lightshow_example_1", "lightshow_example_2",
+                      "lightshow_example_5"):
+            self.assertGreater(spread[label].not_fitted_share, 0.2, label)
+        # ... while the shows built around the light bars are at home there.
+        self.assertLess(spread["lightshow_example_3"].not_fitted_share, 0.05)
+
+    def test_no_shipped_show_crosses_the_warning_line_on_its_own_vehicle(self):
+        # Nothing here is over 50% missing on the vehicle it was written for.
+        for label, spread in self.coverage_by_example("cybertruck").items():
+            if label in ("lightshow_example_3", "lightshow_example_4"):
+                self.assertLess(spread.not_fitted_share,
+                                vp.MOSTLY_NOT_FITTED, label)
+        for label, spread in self.coverage_by_example("models").items():
+            if label in ("lightshow_example_1", "lightshow_example_2",
+                         "lightshow_example_5"):
+                self.assertLess(spread.not_fitted_share,
+                                vp.MOSTLY_NOT_FITTED, label)
+
+
 class FirstLightTests(unittest.TestCase):
     """Issue 78: telling "the lights start late" from "the file starts dark"."""
 

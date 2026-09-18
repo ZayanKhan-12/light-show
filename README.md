@@ -196,6 +196,28 @@ These come from xLights rather than from the vehicle. xLights bugs belong in the
 
 To check a sequence before exporting it, run [sequence_check.py](#sequence_check).
 
+### <a name="show_looks_dead"></a>When the show seems not to start
+The car gives no sign of a show running other than the show itself, so "nothing happened" and "something happened that you cannot see" look identical. Three things to separate them, in order:
+
+1. **Check how much of the show your car can show.** A show written around the [Cybertruck light bars](#cybertruck-light-bar) drives 60 LEDs in front and 52 behind, and no other vehicle has any of them. [vehicle_preview.py](#vehicle_preview) prints the share for each vehicle, and warns when most of a show lands on lights a car does not have:
+
+    ```
+    python3 tools/vehicle_preview.py lightshow.fseq --vehicle models
+    ...
+    Model S (2021+)
+      17% of the lit time lands on lights this vehicle has.
+      [WARNING] mostly-not-fitted
+        83% of this show drives channels Model S (2021+) does not have
+    ```
+
+    This goes both ways: a Cybertruck has no Signature lights and no Channels 4-6, so a show written for a Model S is about a third missing there. Neither case is a fault in the show.
+
+2. **Check when the show's first effect is.** See [first light](#out_of_sync), below - a show can open with several seconds of darkness on purpose.
+
+3. **Check the drive itself** with [usb_check.py](#usb_check), which lists exactly the shows the car will offer and why any other was left out.
+
+If closures move but nothing lights up, the show is playing: the sequence is reaching the car and the closures are proof of it. That points at the first item above rather than at the drive.
+
 ### <a name="out_of_sync"></a>When the music and the lights are out of sync
 Work through these in order; the first two are checked for you by [usb_check.py](#usb_check).
 
@@ -460,6 +482,7 @@ Model 3  -  4 error(s), 7 warning(s), 19 note(s)
 | ```channel-optional-hardware``` | The light is missing on some builds of this vehicle, for example front fog on Model 3 Standard Range +. |
 | ```channel-has-no-effect``` | The light is fitted but follows another channel on this build, so its own channel does nothing. |
 | ```window-during-door-movement``` | A window moves while a Model X door is still moving, which can trigger a false pinch detection and stop the show. |
+| ```mostly-not-fitted``` | Most of the show drives channels this vehicle does not have, so it can look as though very little is happening. |
 | ```interior-not-in-export``` | The show has no [interior RGB](#interior_rgb) channels, because it was exported from an older project directory. |
 | ```interior-unused``` | The show can drive the interior lights and leaves every segment dark. |
 | ```interior-accents-without-display``` | Only the optional accent segments are driven, so nothing lights up in a car without Interior Accent Lights. |

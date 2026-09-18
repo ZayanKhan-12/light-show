@@ -124,6 +124,42 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### "Nothing happened" is usually something you cannot see
+
+[#82](https://github.com/teslamotors/light-show/issues/82) is a Model S owner
+who formatted the drive, was recognised by the car, started the show, got out
+-- and saw "the windows will roll down and up but the show never start". The
+reply is a correct restatement of the whole USB checklist, which is the only
+thing anyone could offer, and it does not fit: the windows moving is proof the
+sequence reached the car.
+
+The measurement that fits is where a show's lit time actually lands.
+`coverage()` counts it per vehicle, and the shipped shows make the point:
+
+- "The Arrival" spends **84% of itself on the Cybertruck light bars**, so a
+  Model S plays 17% of it.
+- The older single-car shows lose **28-35% on a Cybertruck**, which has no
+  Signature lights and no Channels 4-6.
+
+Neither is a defect. Both are the difference between "this show is broken" and
+"this show was written for a different car", and nothing here could say which
+before.
+
+Things to keep right:
+
+- **Channels 47-175 are a block, not channels.** `CHANNEL_BLOCKS` describes
+  the light bars as runs of identical LEDs with the vehicles that have them;
+  they are deliberately not in `CHANNELS`, and a test asserts they never
+  overlap it. Their ranges are checked against `channel_map.json` and their
+  counts against the README's "60 LEDs" and "52".
+- **Interior RGB is counted separately, not as missing.** The README does not
+  say which builds have the accent segments, so calling them absent would be
+  the guess this repository keeps refusing to make.
+- **A test written from an assumption about the shipped shows will be wrong.**
+  This is the second time: the guess was "every show plays fully on a
+  Cybertruck", and the failing test is what turned a one-way observation into
+  the symmetry above.
+
 ### A show is often the only copy of itself
 
 [#79](https://github.com/teslamotors/light-show/issues/79) asks how to get the
