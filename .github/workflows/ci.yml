@@ -253,6 +253,28 @@ jobs:
           print("{} show(s) can reach the cabin, {} drive it.".format(reached, lit))
           PYEOF
 
+      - name: Count ramp effects in each documented band
+        # Issue #89: README.md guarantees a setpoint at ramp+50 ms and no
+        # setpoint at ramp-100 ms, and says nothing in between. Shows do land
+        # in that gap, so it is counted rather than assumed empty.
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import glob, sys
+          sys.path.insert(0, "tools")
+          import vehicle_preview as vp
+          total = {"ramp-too-short": 0, "ramp-duration-indeterminate": 0}
+          for path in sorted(glob.glob("examples/**/*.fseq", recursive=True)):
+              show = vp.read_fseq(path)
+              for finding in vp.analyze(show, vp.VEHICLES["model3"]):
+                  if finding.code in total:
+                      total[finding.code] += finding.occurrences
+          for code, count in sorted(total.items()):
+              print("%-32s %d effect(s)" % (code, count))
+          assert total["ramp-duration-indeterminate"] > 0, \
+              "expected the shipped shows to use the unspecified band"
+          PYEOF
+
       - name: Check the examples table still matches examples/
         # Issue #87: the table in README.md is generated, so it cannot be
         # allowed to drift from the archives it describes.

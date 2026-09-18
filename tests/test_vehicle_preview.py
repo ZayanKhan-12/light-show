@@ -290,13 +290,56 @@ class RampTests(unittest.TestCase):
         self.assertEqual(
             vp.kind_of(vp.VEHICLES["models"], LEFT_SIGNATURE), vp.BOOLEAN)
 
-    def test_a_ramp_that_almost_completes_is_only_a_note(self):
-        # 90% of the way to the setpoint is a rounding detail, not a defect.
+    def test_a_ramp_that_almost_completes_is_not_promised_either_way(self):
+        """Issue 89: the band README.md refuses to guarantee.
+
+        440 ms of a 500 ms ramp is neither 100 ms short of it nor 50 ms past
+        it, so the documentation says nothing about where the light ends up.
+        """
         show = make_show(200, {LEFT_FRONT_TURN: [(0, 22, ON_500)]})
         findings = vp.analyze(show, vp.VEHICLES["model3"])
-        short = find(findings, "ramp-too-short", LEFT_FRONT_TURN)
-        self.assertEqual(len(short), 1)
-        self.assertEqual(short[0].severity, vp.INFO)
+
+        self.assertEqual(find(findings, "ramp-too-short", LEFT_FRONT_TURN), [])
+        unsure = find(findings, "ramp-duration-indeterminate",
+                      LEFT_FRONT_TURN)
+        self.assertEqual(len(unsure), 1)
+        self.assertEqual(unsure[0].severity, vp.INFO)
+        self.assertIn("440 ms", unsure[0].detail)
+
+    def test_the_two_guarantees_are_the_ones_the_readme_gives(self):
+        self.assertEqual(vp.RAMP_REACH_MARGIN_MS, 50)
+        self.assertEqual(vp.RAMP_MISS_MARGIN_MS, 100)
+
+    def test_an_effect_past_the_reach_margin_is_silent(self):
+        # 500 ms ramp held 560 ms: guaranteed to reach the setpoint.
+        show = make_show(200, {LEFT_FRONT_TURN: [(0, 28, ON_500)]})
+        findings = vp.analyze(show, vp.VEHICLES["model3"])
+
+        self.assertEqual(find(findings, "ramp-too-short", LEFT_FRONT_TURN), [])
+        self.assertEqual(find(findings, "ramp-duration-indeterminate",
+                              LEFT_FRONT_TURN), [])
+
+    def test_an_effect_under_the_miss_margin_is_the_short_case(self):
+        # 500 ms ramp held 400 ms: guaranteed not to reach the setpoint.
+        show = make_show(200, {LEFT_FRONT_TURN: [(0, 20, ON_500)]})
+        findings = vp.analyze(show, vp.VEHICLES["model3"])
+
+        self.assertEqual(find(findings, "ramp-duration-indeterminate",
+                              LEFT_FRONT_TURN), [])
+        self.assertEqual(len(find(findings, "ramp-too-short",
+                                  LEFT_FRONT_TURN)), 1)
+
+    def test_the_shipped_shows_sit_in_all_three_bands(self):
+        """Why the middle band is worth naming at all."""
+        bands = {"short": 0, "unsure": 0}
+        for _, show in example_shows():
+            for finding in vp.analyze(show, vp.VEHICLES["model3"]):
+                if finding.code == "ramp-too-short":
+                    bands["short"] += 1
+                elif finding.code == "ramp-duration-indeterminate":
+                    bands["unsure"] += 1
+        self.assertGreater(bands["short"], 0)
+        self.assertGreater(bands["unsure"], 0)
 
     def test_a_ramp_with_room_to_complete_is_not_reported(self):
         show = make_show(200, {LEFT_FRONT_TURN: [(0, 40, ON_500)]})

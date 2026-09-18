@@ -242,6 +242,15 @@ ON_THRESHOLD = 127
 # worth telling the author that their blinking will not be visible.
 MIN_SOLID_MS = 1000
 
+# README.md, "Ramping light channels", gives two guarantees and nothing in
+# between: an effect at least 50 ms longer than its ramp is guaranteed to
+# reach the setpoint, and one at least 100 ms shorter is guaranteed not to.
+# Between those two the documentation promises nothing, which is where a light
+# doing something the author did not expect tends to come from --
+# https://github.com/teslamotors/light-show/issues/89 reads that way.
+RAMP_REACH_MARGIN_MS = 50
+RAMP_MISS_MARGIN_MS = 100
+
 
 def to_percent(value: int) -> int:
     """Convert a raw .fseq byte back to the xLights brightness percentage."""
@@ -661,6 +670,7 @@ def _check_ramp_reachability(
         preview_is_instant = kind_of(_MODEL_S, channel) == BOOLEAN
 
         short: List[Tuple[Run, str, int, int]] = []
+        unsure: List[Tuple[Run, str, int, int]] = []
         for run in runs_of(show.series(channel)):
             code = RAMP_CODES.get(run.percent)
             if code is None:
@@ -669,8 +679,38 @@ def _check_ramp_reachability(
             if ramp_ms == 0:
                 continue  # instant effects have nothing to truncate
             held_ms = _ms(run.frames, show.step_time_ms)
-            if held_ms < ramp_ms + 50:
+            if held_ms <= ramp_ms - RAMP_MISS_MARGIN_MS:
                 short.append((run, action, ramp_ms, held_ms))
+            elif held_ms < ramp_ms + RAMP_REACH_MARGIN_MS:
+                unsure.append((run, action, ramp_ms, held_ms))
+
+        if unsure:
+            run, action, ramp_ms, held_ms = unsure[0]
+            findings.append(Finding(
+                severity=INFO,
+                code="ramp-duration-indeterminate",
+                summary="{name}: {count} ramping effect(s) are held for a "
+                        "length README.md does not promise a result "
+                        "for".format(
+                            name=channel_name(channel), count=len(unsure)),
+                detail=(
+                    "An effect at least {reach} ms longer than its ramp is "
+                    "guaranteed to reach the setpoint, and one at least "
+                    "{miss} ms shorter is guaranteed not to. The first of "
+                    "these is a 'turn {action}; {ramp} ms' effect held for "
+                    "{held} ms, which is neither, so what the light does is "
+                    "not specified. Hold it for {need} ms or more, or "
+                    "{under} ms or less, depending on which you want."
+                ).format(reach=RAMP_REACH_MARGIN_MS,
+                         miss=RAMP_MISS_MARGIN_MS, action=action,
+                         ramp=ramp_ms, held=held_ms,
+                         need=ramp_ms + RAMP_REACH_MARGIN_MS,
+                         under=ramp_ms - RAMP_MISS_MARGIN_MS),
+                channels=(channel,),
+                first_at_ms=_timestamp(run.start_frame, show.step_time_ms),
+                occurrences=len(unsure),
+            ))
+
         if not short:
             continue
 
