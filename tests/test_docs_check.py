@@ -49,6 +49,9 @@ class FakeRepo:
     def check_list(self, relative):
         return dc.check_community_list(relative, self.root)
 
+    def check_commands(self, relative):
+        return dc.check_commands(relative, self.root)
+
 
 class DocsCheckTestCase(unittest.TestCase):
     def setUp(self):
@@ -281,6 +284,100 @@ class RealCommunityListTests(unittest.TestCase):
             self.assertTrue(name)
             self.assertTrue(url.startswith("https://"))
             self.assertNotIn("?", url)
+
+
+class CommandTests(DocsCheckTestCase):
+    """A renamed tool leaves the documentation telling people to run it."""
+
+    def test_a_command_naming_a_missing_script_is_an_error(self):
+        doc = self.repo.write("README.md",
+                              "```\npython3 tools/gone.py drive\n```\n")
+        findings = self.repo.check_commands(doc)
+
+        self.assertEqual(self.codes(findings), ["command-not-found"])
+        self.assertEqual(findings[0].severity, dc.ERROR)
+
+    def test_a_command_naming_a_present_script_is_fine(self):
+        self.repo.touch("tools/here.py")
+        doc = self.repo.write("README.md", "```\npython3 tools/here.py\n```\n")
+        self.assertEqual(self.repo.check_commands(doc), [])
+
+    def test_a_script_at_the_repository_root_is_found(self):
+        self.repo.touch("validator.py")
+        doc = self.repo.write("README.md", "```\npython validator.py x.fseq\n```\n")
+        self.assertEqual(self.repo.check_commands(doc), [])
+
+    def test_each_missing_script_is_reported_once(self):
+        doc = self.repo.write("README.md", (
+            "```\npython3 tools/gone.py\n```\n"
+            "```\npython3 tools/gone.py --json\n```\n"))
+        self.assertEqual(len(self.repo.check_commands(doc)), 1)
+
+    def test_the_real_documents_name_only_scripts_that_exist(self):
+        for name in dc.markdown_files():
+            self.assertEqual(dc.check_commands(name), [], name)
+
+
+class IssueTemplateTests(unittest.TestCase):
+    """Issue 110 arrived with a title and nothing else."""
+
+    TEMPLATE_DIR = os.path.join(REPO_ROOT, ".github", "ISSUE_TEMPLATE")
+
+    def templates(self):
+        return sorted(name for name in os.listdir(self.TEMPLATE_DIR)
+                      if name.endswith(".md"))
+
+    def front_matter(self, name):
+        with open(os.path.join(self.TEMPLATE_DIR, name),
+                  encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+        self.assertEqual(lines[0], "---", name)
+        end = lines.index("---", 1)
+        fields = {}
+        for line in lines[1:end]:
+            key, _, value = line.partition(":")
+            fields[key.strip()] = value.strip()
+        return fields
+
+    def test_there_is_a_template_for_each_kind_of_report(self):
+        self.assertEqual(self.templates(),
+                         ["01-repository.md", "02-vehicle.md"])
+
+    def test_every_template_has_a_name_and_a_description(self):
+        for name in self.templates():
+            fields = self.front_matter(name)
+            self.assertTrue(fields.get("name"), name)
+            self.assertTrue(fields.get("about"), name)
+
+    def test_every_template_asks_for_the_checker_output(self):
+        """The thing that makes a report actionable."""
+        for name in self.templates():
+            with open(os.path.join(self.TEMPLATE_DIR, name),
+                      encoding="utf-8") as handle:
+                self.assertIn("tools/diagnose.py", handle.read(), name)
+
+    def test_the_vehicle_template_asks_for_the_software_version(self):
+        with open(os.path.join(self.TEMPLATE_DIR, "02-vehicle.md"),
+                  encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertIn("software version", text)
+        self.assertIn("Tesla service", text)
+
+    def test_the_chooser_sends_the_three_common_cases_elsewhere(self):
+        with open(os.path.join(self.TEMPLATE_DIR, "config.yml"),
+                  encoding="utf-8") as handle:
+            config = handle.read()
+
+        self.assertIn("smeighan/xLights/issues", config)
+        self.assertIn("CONTRIBUTING.md", config)
+        self.assertIn("download_a_show", config)
+
+    def test_the_chooser_still_allows_a_blank_issue(self):
+        # Turning them off would push people who do not fit a template into
+        # picking the wrong one.
+        with open(os.path.join(self.TEMPLATE_DIR, "config.yml"),
+                  encoding="utf-8") as handle:
+            self.assertIn("blank_issues_enabled: true", handle.read())
 
 
 class DownloadRouteTests(unittest.TestCase):

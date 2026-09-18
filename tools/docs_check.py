@@ -58,6 +58,11 @@ TRACKING_PARAMETERS = ("utm_source", "utm_medium", "utm_campaign", "utm_term",
 # ?raw=true is how GitHub serves a file from a blob URL; it is not tracking.
 ALLOWED_PARAMETERS = ("raw",)
 
+# A documented command, e.g. "python3 tools/usb_check.py" or
+# "python3 validator.py".  Commands live in code fences rather than links, so
+# nothing else here notices when one names a script that has been renamed.
+_COMMAND = re.compile(r'python3?\s+((?:tools/)?[A-Za-z0-9_]+\.py)')
+
 _MARKDOWN_LINK = re.compile(r'\[[^\]]*\]\(([^)]+)\)')
 _HTML_REFERENCE = re.compile(r'(?:src|href)="([^"]+)"')
 _HEADING = re.compile(r'^#+\s+(.*)$')
@@ -227,6 +232,29 @@ def community_entries(text: str) -> List[Tuple[int, str, str]]:
     return entries
 
 
+def check_commands(relative_path: str, root: str = REPO_ROOT) -> List[Finding]:
+    """Scripts named in documented commands have to exist."""
+    with open(os.path.join(root, relative_path), encoding="utf-8") as handle:
+        lines = handle.read().splitlines()
+
+    findings: List[Finding] = []
+    seen = set()
+    for number, line in enumerate(lines, start=1):
+        for script in _COMMAND.findall(line):
+            if script in seen:
+                continue
+            seen.add(script)
+            if not os.path.isfile(os.path.join(root, script)):
+                findings.append(Finding(
+                    ERROR, "command-not-found",
+                    "{} is not in the repository.".format(script),
+                    "A command in the documentation runs this script. "
+                    "Renaming a tool means updating the places that tell "
+                    "people to run it.",
+                    file=relative_path, line=number))
+    return findings
+
+
 def check_community_list(relative_path: str,
                          root: str = REPO_ROOT) -> List[Finding]:
     """The list of community sites, which grows by request.
@@ -325,6 +353,7 @@ def check_all(root: str = REPO_ROOT) -> List[Finding]:
     findings: List[Finding] = []
     for relative_path in markdown_files(root):
         findings.extend(check_file(relative_path, root))
+        findings.extend(check_commands(relative_path, root))
         findings.extend(check_community_list(relative_path, root))
     findings.extend(check_unreferenced_images(root))
     findings.sort(key=lambda f: (_SEVERITY_ORDER[f.severity], f.file,

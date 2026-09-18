@@ -126,6 +126,36 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### An empty issue is a form problem
+
+[#110](https://github.com/teslamotors/light-show/issues/110) is titled
+"stranger things" and has **no description at all**. There is nothing to
+answer and no way to guess responsibly: it might be a request for that show,
+or someone who pressed enter early.
+
+What can be fixed is the thing that let it happen. When #98 added
+`CONTRIBUTING.md` I deliberately left issue templates out, on the grounds that
+they change the contributor experience and are a maintainer preference. #110
+is the argument against that call, so they are in now:
+
+- **`config.yml` redirects the three cases that cannot be answered here**
+  before an issue is opened at all — looking for a show to download, something
+  the car does, something xLights does. A title like "stranger things" most
+  likely wanted the first of those.
+- **Blank issues stay enabled.** Turning them off pushes anyone who does not
+  fit a template into picking the wrong one, which is worse than an empty
+  issue.
+- **Both templates ask for `diagnose.py` output**, because that is the single
+  thing that makes a report actionable, and the vehicle one asks for the
+  software version.
+
+One check came out of writing them. Documented commands live in code fences,
+so no link checker sees them, and renaming a tool would leave the docs and the
+templates telling people to run something that no longer exists.
+`check_commands()` now reads every `python3 tools/….py` in every markdown file
+and fails if the script is missing — eleven scripts across nine documents
+today.
+
 ### The preview is scenery, and scenery is safe to change
 
 [#107](https://github.com/teslamotors/light-show/issues/107) asks whether the

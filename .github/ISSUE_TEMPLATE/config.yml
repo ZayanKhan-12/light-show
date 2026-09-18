@@ -1,0 +1,21 @@
+# Links shown above the template chooser. Most of what arrives in this
+# tracker is one of these, and none of them can be answered here.
+blank_issues_enabled: true
+contact_links:
+  - name: Looking for a show to download
+    url: https://github.com/teslamotors/light-show#download_a_show
+    about: >-
+      Shows are shared by the community, not published here. The README lists
+      the sites that host them.
+  - name: Something the car does
+    url: https://github.com/teslamotors/light-show/blob/master/CONTRIBUTING.md
+    about: >-
+      A show that starts and stops, a screen that crashes, or a vehicle that
+      offers no custom shows at all is vehicle software. CONTRIBUTING.md says
+      where those go.
+  - name: Something xLights does
+    url: https://github.com/smeighan/xLights/issues
+    about: >-
+      Crashes, dialogs and the sequencer belong to xLights. Some of its
+      messages are really about a Tesla sequence; those are listed in the
+      README under "Error messages in xLights".
