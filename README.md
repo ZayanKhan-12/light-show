@@ -805,6 +805,23 @@ To make old light shows look as good as possible on the new Cybertruck's lights,
 
 <img src="/images/rgb_interior.png?raw=true" width="800" />
 
+## <a name="reading_an_fseq"></a>Reading an existing .fseq
+Shows are often shared as a .fseq with no .xsq beside it, so the show is the only copy of itself. There are two ways to get at what is in one.
+
+**To edit it in xLights**, import it as a data layer. Create or open a sequence built against the same audio, then in File > Sequence Settings go to the Data Layers tab and import the .fseq. The show then renders from that layer rather than from the timeline. [sequence_check.py](#sequence_check) lists any imported data layer it finds, so you can confirm the import took.
+
+**To read it**, `tools/fseq_export.py` writes out what the show does, one row per effect, with each value decoded the way this guide documents it:
+
+```
+> python3 tools/fseq_export.py lightshow.fseq --channels 41,46
+channel,name,kind,start_ms,end_ms,duration_ms,frames,value,percent,effect
+41,Liftgate,closure,29120,34580,5460,273,63,25,Open
+41,Liftgate,closure,43620,58160,14540,727,127,50,Dance
+46,Charge Port,closure,43620,44500,880,44,63,25,Open
+```
+
+Add ```--json``` for machine-readable output, ```--channels 1-6``` to narrow it down, ```--include-off``` to see the gaps as well, and ```-o show.csv``` to write it to a file. Light values are named by their [ramp code](#ramping_lights), closures by their [movement](#closures), and interior channels by their [colour component](#interior_rgb); a value that is not one of the documented steps says so rather than being rounded to one.
+
 ## Converting old show files
 Old show files only need to be converted to edit them with the updated xLights configuration. Old light shows can be played without issues on updated Teslas.
 All old .xsq and .fseq files are compatible with this light show update.
