@@ -107,6 +107,12 @@ Shows themselves are made and shared by the community rather than published here
 - If Toybox has no Light Show entry at all, check the vehicle and software version against [Supported Vehicles](#supported-vehicles) before looking at the drive.
 - Error messages will be provided if the required files exist but there is a problem with the light show sequence file. The ones owners have reported are listed below.
 - If the show starts and then stops partway through on a **Model X**, the likely cause is a window moving while a door is still opening or closing, which can trigger a false pinch detection and end the show. See [Model X doors and windows](#modelx_pinch). Unchecking Dance Moves stops it happening by stopping every closure from moving, which is a workaround rather than a fix.
+- <a name="drive_stopped_being_seen"></a>If a drive the car read before is not read today, and it still mounts on a computer, the drive is unlikely to be the problem. This is reported often enough to be worth listing, on Model 3, Model Y and Model 3 Highland ([#112](https://github.com/teslamotors/light-show/issues/112), [#111](https://github.com/teslamotors/light-show/issues/111)). What owners report getting them going again, in the order they usually try it:
+    - Unplug the drive, restart the touchscreen (hold both steering wheel buttons until it reboots), plug the drive back in, and give it a few minutes. Shows have been reported appearing several minutes after the drive goes in rather than immediately.
+    - Change every file's timestamp, which owners suspect makes the car re-read the drive rather than a cached listing: ```find /Volumes/YOURDRIVE -type f -exec touch {} +``` on macOS or Linux.
+    - At least one owner found it fixed by a later vehicle software update.
+
+    No mechanism for this is documented here, and nothing in this repository can change it. [usb_check.py](#usb_check) is still worth running first, because it says whether the drive is one the car should accept - and if it is, this is the car rather than the files.
 
 ### <a name="vehicle_errors"></a>Error messages from the vehicle
 Run [validator.py](#light-show-sequence-validator-script) on a show before taking it to the car; it checks the same things and explains what it finds.

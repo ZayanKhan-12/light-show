@@ -157,12 +157,15 @@ def conclude(stages: Sequence[Tuple[str, List[str], bool]]) -> List[str]:
     out.append("  If the car still misbehaves, the remaining layer is")
     out.append("  {}, which nothing in this repository can "
                "change.".format(VEHICLE_SOFTWARE))
-    out.append("  Symptoms that land there include the show")
-    out.append("  starting and then stopping, the screen crashing, or the "
-               "car refusing a")
-    out.append("  drive every check here passes. Those belong with Tesla "
-               "rather than in")
-    out.append("  this issue tracker; see CONTRIBUTING.md.")
+    out.append("  Symptoms that land there include the show starting and "
+               "then stopping,")
+    out.append("  the screen crashing, and a drive the car read yesterday "
+               "and will not")
+    out.append("  read today. For that last one the README lists what "
+               "owners report")
+    out.append("  getting them going again, under Debug. Those belong with "
+               "Tesla rather")
+    out.append("  than in this issue tracker; see CONTRIBUTING.md.")
     return out
 
 

@@ -143,11 +143,18 @@ class ConclusionTests(unittest.TestCase):
         self.assertIn(dg.VEHICLE_SOFTWARE, text)
         self.assertIn("CONTRIBUTING.md", text)
 
-    def test_the_symptoms_named_are_the_ones_from_issue_98(self):
-        # "Screen will say 'enjoy the show' then crash."
+    def test_the_symptoms_named_are_the_ones_owners_report(self):
+        # #98 "Screen will say 'enjoy the show' then crash", and #112 "worked
+        # yesterday, today it would not".
         text = "\n".join(dg.conclude([(dg.DRIVE, [], True)]))
+
         self.assertIn("crashing", text)
         self.assertIn("starting and then stopping", text)
+        self.assertIn("read yesterday", text)
+
+    def test_the_conclusion_points_at_the_recovery_steps(self):
+        text = "\n".join(dg.conclude([(dg.DRIVE, [], True)]))
+        self.assertIn("under Debug", text)
 
 
 class CommandLineTests(DiagnoseTestCase):

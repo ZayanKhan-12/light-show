@@ -126,6 +126,30 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### Write down the workaround without inventing the cause
+
+[#112](https://github.com/teslamotors/light-show/issues/112) is a drive the
+car read yesterday and will not read today, which still mounts fine on a
+computer. Several owners report the same across Model 3, Model Y and Highland,
+and between them they report three things that get it going again: restart the
+touchscreen and re-seat the drive, change every file's timestamp with `touch`,
+or wait for a vehicle software update.
+
+That is now in `README.md` under Debug, with the vehicles it was reported on
+and the order owners try them in — and with the mechanism left alone.
+@deepcoder's guess that "the car may cache file info somewhere" is a
+reasonable one, and it is theirs rather than something this repository knows,
+so the text says owners *suspect* it rather than asserting a cache exists.
+
+**What I did not do is automate the `touch`.** It is a plausible fix for an
+unconfirmed theory, and a tool that rewrites timestamps across somebody's
+drive is a destructive action taken on a guess. The command is one line and is
+better read than run blindly, so it is documented and not wrapped.
+
+`diagnose.py` names the symptom in its closing paragraph now, because "the
+drive is fine and the car will not read it" is the case where being told to
+stop looking at the files is the entire value of running it.
+
 ### A requirement about a volume, not a device
 
 [#111](https://github.com/teslamotors/light-show/issues/111) is an owner
