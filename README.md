@@ -219,6 +219,26 @@ These come from xLights rather than from the vehicle. xLights bugs belong in the
 
 To check a sequence before exporting it, run [sequence_check.py](#sequence_check).
 
+### <a name="which_layer"></a>Working out which layer is at fault
+A show passes through four layers, and each is only worth looking at once the one before it is sound. The symptom usually says which one you are in:
+
+| Layer | What it looks like | Check |
+| --- | --- | --- |
+| The USB drive | The show is not offered, or the dialog says "Light Show" rather than "Custom Light Show" | [usb_check.py](#usb_check) |
+| The show file | The car shows an error, such as [Incorrect number of channels](#vehicle_errors) | [validator.py](#light-show-sequence-validator-script) |
+| The show against your vehicle | It plays, but looks sparse, wrong or unfinished | [vehicle_preview.py](#vehicle_preview) |
+| The car's software | It plays and then stops, the screen crashes, or a drive that passes every check is refused | Nothing here can |
+
+`tools/diagnose.py` runs whichever of those apply to what you have, and ends by saying what it ruled out:
+
+```
+python3 tools/diagnose.py /Volumes/LIGHTSHOW
+python3 tools/diagnose.py lightshow.fseq
+python3 tools/diagnose.py lightshow.xsq
+```
+
+The last row is the one worth being honest about. If every check here passes and the car still misbehaves, the problem is in the vehicle software and no change to a show file or a drive will fix it - see [CONTRIBUTING.md](CONTRIBUTING.md) for where those reports go.
+
 ### <a name="show_looks_dead"></a>When the show seems not to start
 The car gives no sign of a show running other than the show itself, so "nothing happened" and "something happened that you cannot see" look identical. Three things to separate them, in order:
 
