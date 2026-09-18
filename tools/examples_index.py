@@ -24,7 +24,7 @@ import re
 import sys
 import tempfile
 import zipfile
-from typing import Dict, List, Optional, Sequence
+from typing import List, Optional, Sequence
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _path in (REPO_ROOT, os.path.join(REPO_ROOT, "tools")):
