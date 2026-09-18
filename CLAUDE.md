@@ -123,6 +123,32 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### One report is a note, not a model
+
+[#76](https://github.com/teslamotors/light-show/issues/76) is an owner saying
+that on their 2022 Model X Plaid, Front Turn and Aux Park are one lamp: orange
+from one channel, white from the other, a dimmer mix from both. It is exactly
+the kind of detail `README.md` should carry, and the repository already knew
+it was missing -- the Model X profile has carried a note saying the aux park
+pairing is *assumed* from Model S because the README never states Model X.
+
+What went in: the report, in `README.md` and in the Model X profile's notes,
+attributed, with the build it came from and the fact that it is a single
+account. What did not go in: an `OrGroup`. Making the tool assert that Front
+Turn and Aux Park share an output would turn one owner's observation into
+findings on every Model X show, and a wrong one would be worse than the
+silence it replaced.
+
+The line to hold: **a single report is documented; a confirmed pattern is
+modelled.** If a second Model X owner confirms it, adding the `OrGroup` is a
+two-line change and the note becomes its citation.
+
+`tools/channel_probe.py` now takes `13+17` to drive channels together in one
+turn, so the three states in that report -- each channel alone, then both --
+are a fifteen-second video on any Model X. That is the cheapest way to move a
+report from one account to a confirmed pattern, and it is why the probe
+exists.
+
 ### An approximate number is not a threshold
 
 [#128](https://github.com/teslamotors/light-show/issues/128) is an owner
