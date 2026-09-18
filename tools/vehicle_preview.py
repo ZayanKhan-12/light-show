@@ -927,6 +927,18 @@ DANCE_THERMAL_MS = 30000
 # does not give a threshold, so this one is a judgement, not a documented rule.
 BUNCHED_COMMAND_MS = 100
 
+# "Closure Movement Durations" is headed "Approximate", and #72 reports a
+# liftgate opening in 12 s where the table says 14. A Dance that clears the
+# documented time by a hair is therefore not safe: it works on the car it was
+# authored on and fails on the next one.
+#
+# https://github.com/teslamotors/light-show/issues/128 is that failure, filmed:
+# the trunk opens, stops and closes again. The show behind it asks the liftgate
+# to Dance 14.5 s after its Open against a documented 14 s -- 1.04x, and the
+# only gap below 1.34x in examples/ that is not already under the documented
+# time. A quarter is the margin that separates the two.
+DANCE_MARGIN = 0.25
+
 
 @dataclasses.dataclass
 class ClosureFamily:
@@ -1141,7 +1153,7 @@ def _check_dance_follows_open(show: Show, entry: ClosureUsage,
                 unopened.append(run)
                 continue
             gap = (run.start_frame - last_open.start_frame) * show.step_time_ms
-            if gap < open_ms:
+            if gap < open_ms * (1 + DANCE_MARGIN):
                 early.append((run, gap))
 
     if unopened:
@@ -1163,6 +1175,7 @@ def _check_dance_follows_open(show: Show, entry: ClosureUsage,
 
     if early:
         run, gap = early[0]
+        wanted = int(open_ms * (1 + DANCE_MARGIN))
         findings.append(Finding(
             severity=INFO,
             code="closure-dance-early",
@@ -1170,12 +1183,15 @@ def _check_dance_follows_open(show: Show, entry: ClosureUsage,
                     "about {} s".format(
                         name, _format_time(gap), entry.family.open_ms // 1000),
             detail=(
-                "README.md asks for a delay between Open and Dance so the "
-                "closure reaches the open position first. The movement "
-                "durations it lists are approximate, and shows in examples/ "
-                "do cut this fine, so treat it as worth checking on a car "
-                "rather than as a defect."
-            ),
+                "A closure other than a window only honours Dance once it is "
+                "already open, and the movement durations in README.md are "
+                "approximate: #72 reports a liftgate opening in 12 s where "
+                "the table says 14. Leaving only the documented time is "
+                "therefore not enough, which is what "
+                "https://github.com/teslamotors/light-show/issues/128 filmed "
+                "-- the trunk opens, stops and closes again. Aim for {} or "
+                "more between the Open and the Dance."
+            ).format(_format_time(wanted)),
             channels=(entry.channel,),
             first_at_ms=_timestamp(run.start_frame, show.step_time_ms),
             occurrences=len(early),
