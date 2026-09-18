@@ -69,6 +69,22 @@ Playing a custom show is a vehicle capability. It cannot be enabled by the show 
   ```
 - Must be formatted as exFAT, FAT 32 (for Windows), MS-DOS FAT (for Mac), ext3, or ext4. NTFS is currently not supported.
 - Must **not** contain a base-level TeslaCam folder.
+    - <a name="partitions"></a>This applies to the volume the LightShow folder is on, not to the physical drive. Owners report using one drive for everything by splitting it into partitions, with TeslaCam on one and LightShow on another, both exFAT ([#111](https://github.com/teslamotors/light-show/issues/111), [#112](https://github.com/teslamotors/light-show/issues/112)):
+
+      ```
+      USB DRIVE
+        TESLA - partition 1 (exFAT)
+        └── TeslaCam/
+
+        MUSIC - partition 2 (exFAT)
+        ├── LockChime.wav
+        ├── Boombox/
+        └── LightShow/
+              Monster-Bash.fseq
+              Monster-Bash.mp3
+      ```
+
+      This is not a layout described by Tesla here, so treat it as something owners have made work rather than a supported configuration; the reports cover 2023 Model 3 and 2024 Model 3 Highland. Point [usb_check.py](#usb_check) at the partition holding LightShow, which is the volume the rules apply to.
 - Must **not** contain any map update or firmware update files.
 ### Running the custom light show on a vehicle
 - Insert the flash drive into one of the front USB, USB-C ports, or glovebox USB port, then wait a few seconds.
