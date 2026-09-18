@@ -253,6 +253,27 @@ jobs:
           print("{} show(s) can reach the cabin, {} drive it.".format(reached, lit))
           PYEOF
 
+      - name: Check the examples table still matches examples/
+        # Issue #87: the table in README.md is generated, so it cannot be
+        # allowed to drift from the archives it describes.
+        run: |
+          set -euo pipefail
+          python3 tools/examples_index.py
+          python3 - <<'PYEOF'
+          import sys
+          sys.path.insert(0, "tools")
+          import examples_index as ei
+          readme = open("README.md", encoding="utf-8").read()
+          missing = [line for line in ei.render_markdown(ei.collect()).splitlines()
+                     if line not in readme]
+          if missing:
+              print("README.md is out of date; regenerate the table:", file=sys.stderr)
+              for line in missing:
+                  print("  " + line, file=sys.stderr)
+              sys.exit(1)
+          print("README examples table matches examples/.")
+          PYEOF
+
       - name: Report how much of each example each vehicle can show
         # Issue #82: "the show never started" is often a show written for a
         # different car. This prints the share rather than failing on it.

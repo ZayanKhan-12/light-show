@@ -32,6 +32,7 @@ almost every change is a change to something a car will eventually play.
 | `tools/channel_probe.py` | Builds a show that lights one channel at a time, to see what each drives on a particular car. |
 | `tools/show_folder_check.py` | Checks the folder given to xLights as the show folder, and the audio files in it. |
 | `tools/fseq_export.py` | Writes out what a `.fseq` does, one row per effect, with each value decoded. |
+| `tools/examples_index.py` | Lists what each example in `examples/` ships; the README table is its output. |
 | `tests/` | `unittest` suite, standard library only. |
 | `examples/` | Example shows, distributed as zips. |
 
@@ -123,6 +124,36 @@ comment. If the code and the README disagree, that is a bug worth raising rather
 than silently picking one. Where the README is simply silent — it describes the
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
+
+### Say what is in the box before someone downloads it
+
+[#87](https://github.com/teslamotors/light-show/issues/87) asks for the `.xsq`
+of a show. Nobody could answer it, because `examples/` is sixty megabytes of
+archives with no index: the only way to learn what is inside one was to
+download it and open it.
+
+`tools/examples_index.py` builds the table now in `README.md`, and a test
+asserts every generated line still appears there, so the table cannot drift
+from the files. Writing it turned up something the repository never explained:
+**examples 4 and 5 ship a `.fseq` with no source, and examples 6 and 7 ship
+the source for those same two shows with no `.fseq`.** Anyone wanting to edit
+the eight-car Ready for Assault had no way to know its sequence was in a
+different archive.
+
+Two things to keep straight in it:
+
+- **"Plays fullest on" is a measurement.** It is the vehicle with the largest
+  `coverage()` share, not a claim about what the author intended. Cyber
+  Symphony measures fullest on a Model S despite its name, because it does not
+  use the light bars.
+- **A path segment is a car, a filename is not.** The first version counted
+  `Car_setup.jpg` as a car and reported the five-car show as six. `_CAR_FOLDER`
+  matches whole directory segments only, with a test for the file that broke
+  it.
+
+The request itself is Tesla's to grant: the shows built into the car are
+vehicle software, not files here, and the README now says so plainly rather
+than leaving the question unanswered for two years.
 
 ### "Nothing happened" is usually something you cannot see
 
