@@ -253,6 +253,26 @@ jobs:
           print("{} show(s) can reach the cabin, {} drive it.".format(reached, lit))
           PYEOF
 
+      - name: Export a shipped show and check every row decodes
+        # Issue #79: the exporter is how someone reads a .fseq they were
+        # given. Every value it prints has to name a documented effect.
+        run: |
+          set -euo pipefail
+          python3 tools/fseq_export.py \
+            "examples/lightshow_example_5_Cyber_Symphony_4_Car/Car #1/LightShow/lightshow.fseq" \
+            --channels 41,46
+          python3 - <<'PYEOF'
+          import csv, io, subprocess, sys
+          sys.path.insert(0, "tools")
+          import fseq_export as fx, vehicle_preview as vp
+          show = vp.read_fseq("examples/lightshow_example_3_The_Arrival_5_Car/Car #1/LightShow/lightshow.fseq")
+          rows = fx.export(show)
+          assert rows, "the exporter produced nothing"
+          for row in rows:
+              assert row["effect"], row
+          print("%d row(s) exported, every one decoded." % len(rows))
+          PYEOF
+
       - name: Report when each example first lights up
         # Issue #78: "the lights start late" needs a measurement to argue
         # with. Leading darkness is normal -- The Arrival opens with 5.3 s of

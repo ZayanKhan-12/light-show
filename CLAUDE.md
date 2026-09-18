@@ -31,6 +31,7 @@ almost every change is a change to something a car will eventually play.
 | `tools/sequence_check.py` | Reads a saved xLights `.xsq` and reports what will get in the way later. |
 | `tools/channel_probe.py` | Builds a show that lights one channel at a time, to see what each drives on a particular car. |
 | `tools/show_folder_check.py` | Checks the folder given to xLights as the show folder, and the audio files in it. |
+| `tools/fseq_export.py` | Writes out what a `.fseq` does, one row per effect, with each value decoded. |
 | `tests/` | `unittest` suite, standard library only. |
 | `examples/` | Example shows, distributed as zips. |
 
@@ -122,6 +123,30 @@ comment. If the code and the README disagree, that is a bug worth raising rather
 than silently picking one. Where the README is simply silent — it describes the
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
+
+### A show is often the only copy of itself
+
+[#79](https://github.com/teslamotors/light-show/issues/79) asks how to get the
+data back out of a `.fseq`. Community sites hand out `.fseq` files with no
+`.xsq`, so there is frequently nothing else to work from.
+
+Two answers, and they are for different goals. To **edit** the show, xLights
+imports a `.fseq` as a data layer — that is xLights' feature, now written down
+in `README.md` where it was missing entirely, and `sequence_check.py` reports
+any imported layer so the import can be confirmed. To **read** the show,
+`tools/fseq_export.py` writes one row per effect.
+
+The exporter's one rule: **decode only what `README.md` documents.** A light
+value that matches a ramp code is named as one, a closure value is named
+Open/Dance/Close/Stop, an interior channel reports a component level — and a
+value that is *not* one of the documented steps says "60% (on)" rather than
+being rounded to the nearest documented effect. Rounding would invent
+precision the file does not have, and this tool is most useful to someone
+trying to work out what a stranger's show actually does.
+
+It reuses `vehicle_preview`'s reader, channel table and code tables rather
+than restating any of them, which is why a new documented effect only has to
+be added once.
 
 ### Report the fact; do not invent the fault
 
