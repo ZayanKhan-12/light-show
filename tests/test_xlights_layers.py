@@ -297,5 +297,64 @@ class TestSpecFile(ShowFolderTestCase):
             self.assertNotIn(group["name"], preexisting)
 
 
+
+class PreviewObjectTests(unittest.TestCase):
+    """Issue 107: the vehicles in the preview are scenery, not lights.
+
+    README.md tells owners to switch the Cybertruck one off by name, so the
+    name and the kind of object both have to keep existing.
+    """
+
+    def root(self):
+        return xl.parse(xl.read_rgbeffects(xl.SHOW_ZIP))
+
+    def objects(self):
+        return {obj.get("name"): obj
+                for obj in self.root().find("view_objects")}
+
+    def test_both_vehicles_are_view_objects(self):
+        objects = self.objects()
+        for name in xl.PREVIEW_OBJECTS:
+            self.assertIn(name, objects, name)
+            self.assertEqual(objects[name].get("DisplayAs"), "Mesh", name)
+
+    def test_the_vehicles_own_no_channels(self):
+        """Why hiding one cannot change a show."""
+        for name in xl.PREVIEW_OBJECTS:
+            self.assertIsNone(self.objects()[name].get("StartChannel"), name)
+
+    def test_the_check_passes_on_the_shipped_folder(self):
+        failures = []
+        xl.check_preview_objects(self.root(), failures)
+        self.assertEqual(failures, [])
+
+    def test_the_check_notices_a_renamed_vehicle(self):
+        root = self.root()
+        for obj in root.find("view_objects"):
+            if obj.get("name") == "Cybertruck":
+                obj.set("name", "Cybertruck (2026)")
+        failures = []
+        xl.check_preview_objects(root, failures)
+
+        self.assertEqual(len(failures), 1)
+        self.assertIn("Cybertruck", failures[0])
+
+    def test_the_check_notices_a_vehicle_that_stops_being_a_mesh(self):
+        root = self.root()
+        for obj in root.find("view_objects"):
+            if obj.get("name") == "Tesla Model S":
+                obj.set("DisplayAs", "Image")
+        failures = []
+        xl.check_preview_objects(root, failures)
+
+        self.assertEqual(len(failures), 1)
+        self.assertIn("no longer a Mesh", failures[0])
+
+    def test_the_readme_names_them_the_way_the_check_does(self):
+        readme = (xl.REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        for name in xl.PREVIEW_OBJECTS:
+            self.assertIn('"{}"'.format(name), readme, name)
+
+
 if __name__ == "__main__":
     unittest.main()

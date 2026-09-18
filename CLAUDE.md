@@ -126,6 +126,33 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### The preview is scenery, and scenery is safe to change
+
+[#107](https://github.com/teslamotors/light-show/issues/107) asks whether the
+Cybertruck can be taken out of the xLights preview, which reads like a request
+to modify the show folder. It is not: the two vehicles are `<view_object>`
+entries — 3D meshes named "Tesla Model S" and "Cybertruck" — not light models.
+They carry no `StartChannel`, so making one inactive in the Layout tab changes
+what the author looks at and nothing about what gets exported.
+
+That makes the answer a one-line instruction rather than a change to the
+shipped zip, which matters: the preview is deliberately both vehicles, because
+the pair is the channel superset. Switching one off is a per-author
+preference, and baking it in would decide that preference for everyone.
+
+What did go in is a guard. `check_preview_objects()` runs in
+`xlights_layers.py verify`, so if either mesh is renamed or stops being a
+Mesh, CI fails and the instruction that names it gets updated with it. A test
+also asserts the README spells both names the way the check does — the whole
+instruction is "find the thing called Cybertruck", and a rename would leave it
+pointing at nothing.
+
+Worth saying out loud in the docs: **hiding a vehicle does not remove its
+channels.** The Cybertruck mesh is what shows the light bars, the frunk and
+the bed lights, and a show that drives them still drives them once it is
+hidden. An author who forgets that has made their own preview lie to them,
+which is the failure mode `vehicle_preview.py` exists for.
+
 ### Same name, different show
 
 [#102](https://github.com/teslamotors/light-show/issues/102) asks for the

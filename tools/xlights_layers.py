@@ -459,6 +459,34 @@ def check_preview_models_are_duplicates(root: ET.Element, spec: dict,
             failures.append(f"preview model {name!r} is no longer in the show folder")
 
 
+# The 3D preview is scenery rather than lights: the two vehicles are
+# <view_object> meshes, not models.  README.md tells owners to switch the
+# Cybertruck one off when they find it distracting
+# (https://github.com/teslamotors/light-show/issues/107), so the name it is
+# switched off by has to keep existing.
+PREVIEW_OBJECTS = ("Tesla Model S", "Cybertruck")
+
+
+def check_preview_objects(root: ET.Element, failures: list) -> None:
+    """The view objects the documentation names by hand."""
+    objects = root.find("view_objects")
+    if objects is None:
+        failures.append("the show folder has no <view_objects> section")
+        return
+    present = {obj.get("name") for obj in objects}
+    for name in PREVIEW_OBJECTS:
+        if name not in present:
+            failures.append(
+                f"no view object named {name!r}; README.md tells owners to "
+                "find it by that name in the Layout tab")
+
+    for obj in objects:
+        if obj.get("name") in PREVIEW_OBJECTS and obj.get("DisplayAs") != "Mesh":
+            failures.append(
+                f"view object {obj.get('name')!r} is no longer a Mesh, so the "
+                "instructions for hiding it may not apply")
+
+
 def cmd_verify(_args) -> int:
     failures: list = []
     try:
@@ -486,6 +514,8 @@ def cmd_verify(_args) -> int:
          lambda f: check_partitions(root, spec, f)),
         ("Layer View rows never drive the same model twice",
          lambda f: check_view_rows_disjoint(root, spec, f)),
+        ("the preview still has the vehicles the README names",
+         lambda f: check_preview_objects(root, f)),
     ]
 
     for label, check in checks:
