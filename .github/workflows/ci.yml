@@ -119,6 +119,32 @@ jobs:
           print("{} show(s) can reach the cabin, {} drive it.".format(reached, lit))
           PYEOF
 
+      - name: Report the closure command budget of every example
+        # Issue #50: the per-closure actuation limits are still real. This
+        # also guards the counting rule -- if commands were counted per frame
+        # rather than per effect, these numbers would be in the hundreds.
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import glob, sys
+          sys.path.insert(0, "tools")
+          import vehicle_preview as vp
+
+          spent = 0
+          for path in sorted(glob.glob("examples/**/*.fseq", recursive=True) +
+                             glob.glob("_examples/**/*.fseq", recursive=True)):
+              show = vp.read_fseq(path)
+              for entry in vp.closure_usage(show):
+                  spent += entry.count
+                  assert entry.count <= entry.family.limit + 2, (
+                      path, vp.channel_name(entry.channel), entry.count,
+                      entry.family.limit)
+              codes = sorted({f.code for f in vp.analyze_closures(show)})
+              print("{:66s} {}".format(path[-66:], ", ".join(codes) or "within budget"))
+          assert spent, "no example spends a closure command"
+          print("{} closure command(s) counted across the examples.".format(spent))
+          PYEOF
+
       - name: Check a multi-show USB layout end to end
         # Builds the layout issue #48 asked for -- several shows side by side
         # in one LightShow folder -- out of the shipped examples, and asserts

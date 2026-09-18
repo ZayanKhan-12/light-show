@@ -64,7 +64,8 @@ Multiple light show repositories can be found online. A screenshot from [XLightS
 
 ## <a name="show_limits"></a>General Limitations of Custom Shows
 - The maximum duration for a custom Tesla xLights show is 4 hours.
-- The limit on number of commands during a custom show has been removed.
+- The limit on number of commands during a custom show has been removed. This was the whole-show budget that older versions of the validator reported as a "memory usage" percentage; light channels are no longer counted against anything, so a show can no longer be too large to play.
+- Individual closures do still have actuation limits. They are listed in the [Closures channels](#closures) table, only Open, Close and Dance count towards them, and they are counted separately for each closure. The [Vehicle Preview Script](#vehicle_preview) reports how much of each closure's budget a show spends.
 ## Audio file requirements
 You can use both the mp3 and wav format (.wav is recommended).
 Make sure the file is encoded with a sample rate of 44.1 kHz; less common 48 kHz files won't properly sync to the light show.
@@ -256,6 +257,19 @@ The vehicle keys are ```models```, ```modelx```, ```model3```, ```modely``` and 
 
 The report opens with an [Interior RGB](#interior_rgb) section, which is the same on every vehicle: it lists what the show does with the Center Front Display and the five accent segments, and says so when a show cannot reach them at all.
 
+A Closure command budget section follows it, also the same on every vehicle. Each closure has its own [actuation limit](#closures) for a show, and the xLights preview will happily animate a closure far past it, so the budget is easy to overrun without noticing:
+
+```
+------------------------------------------------------------------------
+Closure command budget
+------------------------------------------------------------------------
+  Left Mirror               20 / 20   Mirrors       at the limit
+  Right Mirror              20 / 20   Mirrors       at the limit
+  Left Front Window          2 / 6    Windows
+  Liftgate                   3 / 6    Liftgate
+  Charge Port                3 / 3    Charge Port   at the limit
+```
+
 Expected output looks like, running against [lightshow_example_2](examples/lightshow_example_2_Max_Carlisle_Auld_Lang_Syne_In_the_City.zip?raw=true):
 ```
 > python3 tools/vehicle_preview.py lightshow.fseq --vehicle model3
@@ -294,6 +308,13 @@ Model 3  -  4 error(s), 7 warning(s), 19 note(s)
 | ```interior-accents-without-display``` | Only the optional accent segments are driven, so nothing lights up in a car without Interior Accent Lights. |
 | ```interior-display-only``` | The Center Front Display is used and the accent segments are not, which works on every equipped car. |
 | ```interior-partial-accents``` | Some accent segments are driven and others stay dark. |
+| ```closure-limit-exceeded``` | A closure is given more Open/Close/Dance commands than its [documented limit](#closures) for one show. |
+| ```closure-limit-reached``` | A closure is exactly at its limit, with no room for another command. |
+| ```closure-dance-unsupported``` | A Dance request on a closure the table marks as not supporting Dance, such as the mirrors or door handles. |
+| ```closure-dance-without-open``` | A Dance request while the closure is closed. Everything except windows must be opened first. |
+| ```closure-dance-early``` | A Dance request sooner after its Open than the [movement duration](#closure_movement_durations) allows. |
+| ```closure-dance-thermal``` | More than the recommended ~30 s of dancing on one closure. |
+| ```closure-commands-bunched``` | Commands close enough together to spend the budget without moving the closure much. |
 
 ## Boolean Light Channels
 Most lights available on the vehicle can only turn on or off instantly, which corresponds to 0% or 100% brightness of an 'Effect' in xLights.
@@ -452,6 +473,7 @@ To command a closure to move in a particular manner, place an effect with the fo
 - With the exception of windows, closures will not honor Dance requests unless the respective closure is already in the open position. The show creator must account for this by adding a delay between Open and Dance requests. Refer to [Closure Movement Durations](#closure_movement_durations) for more information.
 - The charge port door will automatically close if 2 minutes have elapsed since opening.
 - Closure commands spaced very close together (eg, 20ms) will not cause much visible movement, and will use up the command limits quickly. Leave reasonable time between commands to see the best effects.
+- To count what a finished show actually spends, run the [Vehicle Preview Script](#vehicle_preview). It prints each closure's commands against its limit and flags Dance requests a closure will not honor.
 
 ### Closures Command xLights Notes
 - For Idle, Open, Close, and Stop, there is no minimum xLights effect duration in order for the command to take effect. For example, the following sequence has a liftgate open command with duration of only 1s ahead of the dance that comes later, and this is sufficient to open the liftgate all the way:

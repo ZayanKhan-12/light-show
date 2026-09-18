@@ -822,6 +822,323 @@ def _check_boolean_ramps(
 
 
 # --------------------------------------------------------------------------
+# Closure command budget
+# --------------------------------------------------------------------------
+# https://github.com/teslamotors/light-show/issues/50 was filed when a show
+# overran the old whole-show command limit ("more than 241%").  That limit is
+# gone -- README.md, "General Limitations of Custom Shows" says the limit on
+# the number of commands has been removed -- but the per-closure actuation
+# limits in the closure table are still real, still counted separately for
+# each individual closure, and nothing in this repository counts them.
+#
+# README.md, "Closures Command Limitations": "All closures have actuation
+# limits listed in the table above. Only Open, Close, and Dance count towards
+# the actuation limits."
+
+# Percentages come from CLOSURE_CODES, so the two cannot drift apart.
+_CLOSURE_BY_NAME = {name: percent for percent, name in CLOSURE_CODES.items()}
+OPEN = _CLOSURE_BY_NAME["Open"]
+DANCE = _CLOSURE_BY_NAME["Dance"]
+CLOSE = _CLOSURE_BY_NAME["Close"]
+STOP = _CLOSURE_BY_NAME["Stop"]
+
+# Idle and Stop are free; everything else is an actuation.
+COUNTED_COMMANDS = (OPEN, DANCE, CLOSE)
+
+# README.md, "Other notes": dancing for ~30 s or less per show is recommended
+# before thermal limits stop the closure.
+DANCE_THERMAL_MS = 30000
+
+# The README's example of commands "spaced very close together" is 20 ms. It
+# does not give a threshold, so this one is a judgement, not a documented rule.
+BUNCHED_COMMAND_MS = 100
+
+
+@dataclasses.dataclass
+class ClosureFamily:
+    """A row of the closure table in README.md."""
+
+    name: str
+    # "Command Limit Per Show", counted separately for each closure.
+    limit: int
+    # "Supports Dance?"
+    dance: bool
+    # "Closure Movement Durations", the approximate time to reach open.
+    open_ms: int
+    # Windows are the documented exception to "Dance needs an open closure".
+    dance_needs_open: bool = True
+
+
+_FALCON_DOORS = ClosureFamily("Falcon Doors", limit=6, dance=True,
+                              open_ms=20000)
+_FRONT_DOORS = ClosureFamily("Front Doors", limit=6, dance=False,
+                             open_ms=22000)
+_MIRRORS = ClosureFamily("Mirrors", limit=20, dance=False, open_ms=2000)
+_WINDOWS = ClosureFamily("Windows", limit=6, dance=True, open_ms=4000,
+                         dance_needs_open=False)
+_LIFTGATE = ClosureFamily("Liftgate", limit=6, dance=True, open_ms=14000)
+_DOOR_HANDLES = ClosureFamily("Door Handles", limit=20, dance=False,
+                              open_ms=2000)
+_CHARGE_PORT = ClosureFamily("Charge Port", limit=3, dance=True, open_ms=2000)
+
+CLOSURE_FAMILIES: Dict[int, ClosureFamily] = {
+    31: _FALCON_DOORS, 32: _FALCON_DOORS,
+    33: _FRONT_DOORS, 34: _FRONT_DOORS,
+    35: _MIRRORS, 36: _MIRRORS,
+    37: _WINDOWS, 38: _WINDOWS, 39: _WINDOWS, 40: _WINDOWS,
+    41: _LIFTGATE,
+    42: _DOOR_HANDLES, 43: _DOOR_HANDLES, 44: _DOOR_HANDLES,
+    45: _DOOR_HANDLES,
+    46: _CHARGE_PORT,
+}
+
+
+@dataclasses.dataclass
+class ClosureUsage:
+    """What a show spends on one individual closure."""
+
+    channel: int
+    family: ClosureFamily
+    commands: List[Run]                 # the Open/Close/Dance runs, in order
+    dance_ms: int
+
+    @property
+    def count(self) -> int:
+        return len(self.commands)
+
+    @property
+    def over_by(self) -> int:
+        return max(0, self.count - self.family.limit)
+
+    def as_dict(self) -> dict:
+        return {
+            "channel": self.channel,
+            "name": channel_name(self.channel),
+            "family": self.family.name,
+            "commands": self.count,
+            "limit": self.family.limit,
+            "over_by": self.over_by,
+            "dance_ms": self.dance_ms,
+        }
+
+
+def closure_usage(show: Show) -> List[ClosureUsage]:
+    """Count the actuations this show spends on every closure."""
+    usage: List[ClosureUsage] = []
+    for channel in sorted(CLOSURE_FAMILIES):
+        if channel > show.channel_count:
+            continue
+        runs = runs_of(show.series(channel))
+        commands = [r for r in runs if r.percent in COUNTED_COMMANDS]
+        dance_ms = sum(r.frames for r in runs if r.percent == DANCE) \
+            * show.step_time_ms
+        usage.append(ClosureUsage(
+            channel=channel,
+            family=CLOSURE_FAMILIES[channel],
+            commands=commands,
+            dance_ms=dance_ms,
+        ))
+    return usage
+
+
+def analyze_closures(show: Show) -> List[Finding]:
+    """Report closures that overrun their documented actuation budget."""
+    findings: List[Finding] = []
+    for entry in closure_usage(show):
+        if not entry.commands:
+            continue
+        _check_closure_budget(show, entry, findings)
+        _check_closure_dance(show, entry, findings)
+        _check_bunched_commands(show, entry, findings)
+    findings.sort(key=lambda f: (
+        _SEVERITY_ORDER[f.severity],
+        f.first_at_ms if f.first_at_ms is not None else 0,
+    ))
+    return findings
+
+
+def _check_closure_budget(show: Show, entry: ClosureUsage,
+                          findings: List[Finding]) -> None:
+    name = channel_name(entry.channel)
+    limit = entry.family.limit
+    if entry.over_by:
+        # The command that first goes past the limit is the interesting one.
+        overrun = entry.commands[limit]
+        findings.append(Finding(
+            severity=WARNING,
+            code="closure-limit-exceeded",
+            summary="{} uses {} commands; the limit is {} per show".format(
+                name, entry.count, limit),
+            detail=(
+                "README.md gives {family} an actuation limit of {limit} per "
+                "show, counted separately for each individual closure, and "
+                "only Open, Close and Dance count towards it. This show "
+                "spends {count}, so {over} past the documented budget and "
+                "cannot be relied on."
+            ).format(family=entry.family.name, limit=limit,
+                     count=entry.count,
+                     over=_plural(entry.over_by, "command", verb=True)),
+            channels=(entry.channel,),
+            first_at_ms=_timestamp(overrun.start_frame, show.step_time_ms),
+            occurrences=entry.over_by,
+        ))
+    elif entry.count == limit:
+        findings.append(Finding(
+            severity=INFO,
+            code="closure-limit-reached",
+            summary="{} is exactly at its {}-command limit".format(
+                name, limit),
+            detail=(
+                "There is no room left for another Open, Close or Dance on "
+                "this closure. Adding one would push the show past the "
+                "documented budget."
+            ),
+            channels=(entry.channel,),
+            first_at_ms=_timestamp(entry.commands[0].start_frame,
+                                   show.step_time_ms),
+            occurrences=entry.count,
+        ))
+
+
+def _check_closure_dance(show: Show, entry: ClosureUsage,
+                         findings: List[Finding]) -> None:
+    """Dance requests the closure will not honour."""
+    family = entry.family
+    dances = [r for r in entry.commands if r.percent == DANCE]
+    if not dances:
+        return
+
+    name = channel_name(entry.channel)
+    if not family.dance:
+        findings.append(Finding(
+            severity=WARNING,
+            code="closure-dance-unsupported",
+            summary="{} does not support Dance; {} will not move it".format(
+                name, _plural(len(dances), "request")),
+            detail=(
+                'README.md marks {family} as "-" in the "Supports Dance?" '
+                "column. Use Open and Close requests to make this closure "
+                "move during the show. Each of those still counts against "
+                "the {limit}-command limit."
+            ).format(family=family.name, limit=family.limit),
+            channels=(entry.channel,),
+            first_at_ms=_timestamp(dances[0].start_frame, show.step_time_ms),
+            occurrences=len(dances),
+        ))
+        return
+
+    if family.dance_needs_open:
+        _check_dance_follows_open(show, entry, dances, findings)
+
+    if entry.dance_ms > DANCE_THERMAL_MS:
+        findings.append(Finding(
+            severity=INFO,
+            code="closure-dance-thermal",
+            summary="{} dances for {}, longer than the recommended "
+                    "30 s".format(name, _format_time(entry.dance_ms)),
+            detail=(
+                "README.md recommends dancing for ~30 s or less per show. "
+                "Past the thermal limit the closure stops moving until it "
+                "cools down, and how soon that happens depends on ambient "
+                "temperature among other things."
+            ),
+            channels=(entry.channel,),
+            first_at_ms=_timestamp(dances[0].start_frame, show.step_time_ms),
+        ))
+
+
+def _check_dance_follows_open(show: Show, entry: ClosureUsage,
+                              dances: Sequence[Run],
+                              findings: List[Finding]) -> None:
+    """README.md: a closure only honours Dance once it is already open."""
+    name = channel_name(entry.channel)
+    open_ms = entry.family.open_ms
+    last_open: Optional[Run] = None
+    unopened: List[Run] = []
+    early: List[Tuple[Run, int]] = []
+
+    for run in entry.commands:
+        if run.percent == OPEN:
+            last_open = run
+        elif run.percent == CLOSE:
+            last_open = None
+        elif run.percent == DANCE:
+            if last_open is None:
+                unopened.append(run)
+                continue
+            gap = (run.start_frame - last_open.start_frame) * show.step_time_ms
+            if gap < open_ms:
+                early.append((run, gap))
+
+    if unopened:
+        findings.append(Finding(
+            severity=WARNING,
+            code="closure-dance-without-open",
+            summary="{} is asked to Dance while closed, {}".format(
+                name, _plural(len(unopened), "time")),
+            detail=(
+                "README.md: closures other than windows will not honour a "
+                "Dance request unless the closure is already open. Add an "
+                "Open ahead of the Dance, and leave about {open_s} s for the "
+                "movement to finish."
+            ).format(open_s=open_ms // 1000),
+            channels=(entry.channel,),
+            first_at_ms=_timestamp(unopened[0].start_frame, show.step_time_ms),
+            occurrences=len(unopened),
+        ))
+
+    if early:
+        run, gap = early[0]
+        findings.append(Finding(
+            severity=INFO,
+            code="closure-dance-early",
+            summary="{} is asked to Dance {} after its Open, which takes "
+                    "about {} s".format(
+                        name, _format_time(gap), entry.family.open_ms // 1000),
+            detail=(
+                "README.md asks for a delay between Open and Dance so the "
+                "closure reaches the open position first. The movement "
+                "durations it lists are approximate, and shows in examples/ "
+                "do cut this fine, so treat it as worth checking on a car "
+                "rather than as a defect."
+            ),
+            channels=(entry.channel,),
+            first_at_ms=_timestamp(run.start_frame, show.step_time_ms),
+            occurrences=len(early),
+        ))
+
+
+def _check_bunched_commands(show: Show, entry: ClosureUsage,
+                            findings: List[Finding]) -> None:
+    """Commands too close together to move the closure, but still counted."""
+    bunched = []
+    for first, second in zip(entry.commands, entry.commands[1:]):
+        gap = (second.start_frame - first.start_frame) * show.step_time_ms
+        if gap < BUNCHED_COMMAND_MS:
+            bunched.append((second, gap))
+    if not bunched:
+        return
+    run, gap = bunched[0]
+    findings.append(Finding(
+        severity=INFO,
+        code="closure-commands-bunched",
+        summary="{} has {} less than {} ms after the previous one".format(
+            channel_name(entry.channel), _plural(len(bunched), "command"),
+            BUNCHED_COMMAND_MS),
+        detail=(
+            "README.md: commands spaced very close together will not cause "
+            "much visible movement and use up the command limits quickly. "
+            "The closest pair here is {gap} ms apart. The {threshold} ms "
+            "threshold is this tool's judgement; the README only gives 20 ms "
+            "as an example."
+        ).format(gap=gap, threshold=BUNCHED_COMMAND_MS),
+        channels=(entry.channel,),
+        first_at_ms=_timestamp(run.start_frame, show.step_time_ms),
+        occurrences=len(bunched),
+    ))
+
+
+# --------------------------------------------------------------------------
 # Interior RGB analysis
 # --------------------------------------------------------------------------
 # These findings are about the show, not about one vehicle: README.md says the
@@ -1011,6 +1328,14 @@ def analyze(show: Show, profile: VehicleProfile) -> List[Finding]:
 # --------------------------------------------------------------------------
 
 
+def _plural(count: int, noun: str, verb: bool = False) -> str:
+    """"1 command is" / "2 commands are", for finding text."""
+    text = "{} {}{}".format(count, noun, "" if count == 1 else "s")
+    if verb:
+        text += " is" if count == 1 else " are"
+    return text
+
+
 def _format_time(ms: Optional[int]) -> str:
     if ms is None:
         return "-"
@@ -1074,14 +1399,51 @@ def render_interior(usage: List[SegmentUsage],
     return out
 
 
+def render_closures(usage: List[ClosureUsage], findings: List[Finding],
+                    verbose: bool) -> List[str]:
+    """The closure budget table. Limits do not vary by vehicle."""
+    out: List[str] = ["-" * 72, "Closure command budget", "-" * 72]
+    used = [u for u in usage if u.commands]
+    if not used:
+        out.append("  This show does not move any closure.")
+    for entry in (usage if verbose else used):
+        if entry.over_by:
+            note = "over by {}".format(entry.over_by)
+        elif entry.commands and entry.count == entry.family.limit:
+            note = "at the limit"
+        else:
+            note = ""
+        out.append("  {:<24}{:>4} / {:<4} {:<14}{}".format(
+            channel_name(entry.channel), entry.count, entry.family.limit,
+            entry.family.name, note).rstrip())
+    for finding in findings:
+        if finding.severity == INFO and not verbose:
+            continue
+        out.append("")
+        out.append("  [{}] {}".format(_MARKERS[finding.severity],
+                                      finding.code))
+        out.append(_wrap(finding.summary, 76, "    "))
+        out.append(_wrap(finding.detail, 76, "      "))
+    hidden = sum(1 for f in findings if f.severity == INFO)
+    if hidden and not verbose:
+        out.append("")
+        out.append("  {} closure note(s) hidden; re-run with -v to see "
+                   "them.".format(hidden))
+    out.append("")
+    return out
+
+
 def render_report(show: Show, results: Dict[str, List[Finding]], verbose: bool,
-                  interior: Optional[List[Finding]] = None) -> str:
+                  interior: Optional[List[Finding]] = None,
+                  closures: Optional[List[Finding]] = None) -> str:
     out: List[str] = []
     out.append("{} frames, {} ms per frame, total duration {}.".format(
         show.frame_count, show.step_time_ms, _format_time(show.duration_ms)))
     out.append("")
     if interior is not None:
         out.extend(render_interior(interior_usage(show), interior, verbose))
+    if closures is not None:
+        out.extend(render_closures(closure_usage(show), closures, verbose))
     for key, findings in results.items():
         profile = VEHICLES[key]
         errors = sum(1 for f in findings if f.severity == ERROR)
@@ -1151,6 +1513,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     keys = args.vehicle or sorted(VEHICLES)
     results = {key: analyze(show, VEHICLES[key]) for key in keys}
     interior = analyze_interior(show)
+    closures = analyze_closures(show)
 
     if args.json:
         print(json.dumps({
@@ -1162,6 +1525,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "segments": [u.as_dict() for u in interior_usage(show)],
                 "findings": [f.as_dict() for f in interior],
             },
+            "closures": {
+                "budget": [u.as_dict() for u in closure_usage(show)],
+                "findings": [f.as_dict() for f in closures],
+            },
             "vehicles": {
                 key: {
                     "label": VEHICLES[key].label,
@@ -1171,11 +1538,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             },
         }, indent=2))
     else:
-        print(render_report(show, results, args.verbose, interior))
+        print(render_report(show, results, args.verbose, interior, closures))
 
     if args.strict and any(
         f.severity in (ERROR, WARNING)
-        for findings in list(results.values()) + [interior] for f in findings
+        for findings in list(results.values()) + [interior, closures]
+        for f in findings
     ):
         return 1
     return 0
