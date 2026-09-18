@@ -253,6 +253,30 @@ jobs:
           print("{} show(s) can reach the cabin, {} drive it.".format(reached, lit))
           PYEOF
 
+      - name: Report how much of each example each vehicle can show
+        # Issue #82: "the show never started" is often a show written for a
+        # different car. This prints the share rather than failing on it.
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import glob, sys
+          sys.path.insert(0, "tools")
+          import vehicle_preview as vp
+          seen = set()
+          for path in sorted(glob.glob("examples/**/*.fseq", recursive=True)):
+              label = path.split("/")[1]
+              if label in seen:
+                  continue
+              seen.add(label)
+              show = vp.read_fseq(path)
+              shares = []
+              for key in ("models", "model3", "cybertruck"):
+                  spread = vp.coverage(show, vp.VEHICLES[key])
+                  pct = 100 * spread.fitted / spread.total if spread.total else 0
+                  shares.append("%s %.0f%%" % (key, pct))
+              print("{:46s} {}".format(label[:46], "  ".join(shares)))
+          PYEOF
+
       - name: Export a shipped show and check every row decodes
         # Issue #79: the exporter is how someone reads a .fseq they were
         # given. Every value it prints has to name a documented effect.

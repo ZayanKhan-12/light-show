@@ -92,6 +92,56 @@ CHANNELS: Dict[int, Tuple[str, str]] = {
 }
 
 # --------------------------------------------------------------------------
+# The Cybertruck-only channels between the exterior lights and the interior
+# --------------------------------------------------------------------------
+# Channels 47-175 are the light bars and the suspension. They are named here
+# rather than in CHANNELS because they are runs of identical LEDs rather than
+# individual lights, and because no other vehicle has any of them: a show that
+# spends most of itself on these looks nearly dark on a Model S, which is what
+# https://github.com/teslamotors/light-show/issues/82 reads like.
+#
+# Ranges are the StartChannel and node count of each model in
+# xlights/channel_map.json, and match the counts in README.md.
+
+
+@dataclasses.dataclass
+class ChannelBlock:
+    name: str
+    first: int
+    last: int
+    vehicles: Tuple[str, ...]
+    readme: str
+
+    def __contains__(self, channel: int) -> bool:
+        return self.first <= channel <= self.last
+
+    @property
+    def channels(self) -> range:
+        return range(self.first, self.last + 1)
+
+
+CHANNEL_BLOCKS: Tuple[ChannelBlock, ...] = (
+    ChannelBlock("Front Light Bar", 47, 106, ("cybertruck",),
+                 "Cybertruck Light Bar"),
+    ChannelBlock("Rear Light Bar", 111, 162, ("cybertruck",),
+                 "Cybertruck Light Bar"),
+    ChannelBlock("Offroad Light Bar", 167, 172, ("cybertruck",),
+                 "Cybertruck Offroad Light Bar"),
+    # The model declares two nodes; the second runs into the interior block
+    # below, so only the first is treated as suspension here.
+    ChannelBlock("Suspension", 175, 175, ("cybertruck",),
+                 "Cybertruck Light Bar"),
+)
+
+
+def block_of(channel: int) -> Optional[ChannelBlock]:
+    for block in CHANNEL_BLOCKS:
+        if channel in block:
+            return block
+    return None
+
+
+# --------------------------------------------------------------------------
 # Interior RGB
 # --------------------------------------------------------------------------
 # The cabin lights answer https://github.com/teslamotors/light-show/issues/49,
@@ -146,7 +196,12 @@ del _segment, _channel, _component
 
 def channel_name(channel: int) -> str:
     entry = CHANNELS.get(channel)
-    return entry[0] if entry else "Channel {}".format(channel)
+    if entry:
+        return entry[0]
+    block = block_of(channel)
+    if block:
+        return "{} LED {}".format(block.name, channel - block.first + 1)
+    return "Channel {}".format(channel)
 
 
 # --------------------------------------------------------------------------
@@ -1549,6 +1604,103 @@ def _check_windows_during_door_movement(
     ))
 
 
+# --------------------------------------------------------------------------
+# How much of a show a vehicle can actually show
+# --------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class Coverage:
+    """Where a show's lit time lands on one vehicle."""
+
+    fitted: int = 0            # channels this vehicle has
+    not_fitted: int = 0        # channels it does not
+    optional: int = 0          # interior RGB, which depends on the options
+
+    @property
+    def total(self) -> int:
+        return self.fitted + self.not_fitted + self.optional
+
+    @property
+    def not_fitted_share(self) -> float:
+        return self.not_fitted / self.total if self.total else 0.0
+
+    def as_dict(self) -> dict:
+        return {
+            "fitted": self.fitted,
+            "not_fitted": self.not_fitted,
+            "optional": self.optional,
+            "total": self.total,
+            "not_fitted_share": round(self.not_fitted_share, 4),
+        }
+
+
+def coverage(show: Show, profile: VehicleProfile) -> Coverage:
+    """Count lit frames by whether this vehicle has the channel at all.
+
+    Interior RGB is counted apart from the rest: README.md says the accent
+    segments exist "on cars with Interior Accent Lights" without saying which
+    builds, so calling them missing would be a guess.
+    """
+    result = Coverage()
+    for channel in range(1, show.channel_count + 1):
+        lit = sum(1 for value in show.series(channel) if value)
+        if not lit:
+            continue
+        entry = CHANNELS.get(channel)
+        if entry and entry[1] == RGB:
+            result.optional += lit
+            continue
+        block = block_of(channel)
+        if block is not None:
+            if profile.key in block.vehicles:
+                result.fitted += lit
+            else:
+                result.not_fitted += lit
+            continue
+        if entry is None:
+            continue                      # unmapped, nothing to claim
+        if kind_of(profile, channel) == ABSENT:
+            result.not_fitted += lit
+        else:
+            result.fitted += lit
+    return result
+
+
+# More than this much of a show landing on channels the vehicle does not have
+# is the difference between "some effects are missing" and "it looks like
+# nothing happened", which is how issue #82 describes it.
+MOSTLY_NOT_FITTED = 0.5
+
+
+def _check_coverage(show: Show, profile: VehicleProfile,
+                    findings: List[Finding]) -> None:
+    result = coverage(show, profile)
+    if result.total == 0 or result.not_fitted_share <= MOSTLY_NOT_FITTED:
+        return
+
+    missing_blocks = sorted({
+        block.name for channel in range(1, show.channel_count + 1)
+        for block in (block_of(channel),)
+        if block is not None and profile.key not in block.vehicles
+        and any(show.series(channel))})
+    findings.append(Finding(
+        severity=WARNING,
+        code="mostly-not-fitted",
+        summary="{:.0f}% of this show drives channels {} does not "
+                "have".format(result.not_fitted_share * 100, profile.label),
+        detail=(
+            "The show will play, but most of what it does is on lights this "
+            "vehicle has no equivalent for{blocks}, so it can look as though "
+            "very little is happening. This is a property of the show rather "
+            "than a fault in it -- a show written around the Cybertruck light "
+            "bars has most of itself there."
+        ).format(blocks=(": " + ", ".join(missing_blocks)) if missing_blocks
+                 else ""),
+        occurrences=result.not_fitted,
+    ))
+
+
 def analyze(show: Show, profile: VehicleProfile) -> List[Finding]:
     """Return everything about this show that will surprise the author."""
     findings: List[Finding] = []
@@ -1558,6 +1710,7 @@ def analyze(show: Show, profile: VehicleProfile) -> List[Finding]:
     _check_boolean_ramps(show, profile, findings)
     _check_absent_channels(show, profile, findings)
     _check_windows_during_door_movement(show, profile, findings)
+    _check_coverage(show, profile, findings)
     findings.sort(key=lambda f: (
         _SEVERITY_ORDER[f.severity],
         f.first_at_ms if f.first_at_ms is not None else 0,
@@ -1715,6 +1868,15 @@ def render_report(show: Show, results: Dict[str, List[Finding]], verbose: bool,
         out.append("{}  -  {} error(s), {} warning(s), {} note(s)".format(
             profile.label, errors, warnings, infos))
         out.append("=" * 72)
+        spread = coverage(show, profile)
+        if spread.total:
+            out.append("  {:.0f}% of the lit time lands on lights this "
+                       "vehicle has{}.".format(
+                           100 * spread.fitted / spread.total,
+                           "" if not spread.optional else
+                           ", {:.0f}% on interior segments that depend on the "
+                           "options".format(
+                               100 * spread.optional / spread.total)))
         if not findings:
             out.append("  This show renders the same way the xLights preview "
                        "shows it.")
@@ -1807,6 +1969,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "vehicles": {
                 key: {
                     "label": VEHICLES[key].label,
+                    "coverage": coverage(show, VEHICLES[key]).as_dict(),
                     "findings": [f.as_dict() for f in findings],
                     "builds": [
                         {
