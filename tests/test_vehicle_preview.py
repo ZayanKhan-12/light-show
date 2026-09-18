@@ -7,6 +7,7 @@ vehicle the xLights preview models.
 """
 
 import io
+import json
 import os
 import struct
 import sys
@@ -97,8 +98,16 @@ class EffectEncodingTests(unittest.TestCase):
 
 
 class ChannelMapTests(unittest.TestCase):
-    def test_channel_numbers_are_contiguous_from_one(self):
-        self.assertEqual(sorted(vp.CHANNELS), list(range(1, 47)))
+    def test_exterior_channel_numbers_are_contiguous_from_one(self):
+        exterior = [c for c, (_, kind) in vp.CHANNELS.items()
+                    if kind != vp.RGB]
+        self.assertEqual(sorted(exterior), list(range(1, 47)))
+
+    def test_interior_channels_are_a_separate_contiguous_block(self):
+        """The cabin sits at 176-193, far above the exterior channels."""
+        interior = [c for c, (_, kind) in vp.CHANNELS.items()
+                    if kind == vp.RGB]
+        self.assertEqual(sorted(interior), list(range(176, 194)))
 
     def test_channel_names_are_unique(self):
         names = [name for name, _ in vp.CHANNELS.values()]
@@ -444,31 +453,44 @@ class CommandLineTests(unittest.TestCase):
         self.assertTrue(err.strip())
 
 
+def example_fseqs():
+    """Yield (label, bytes) for every example show, zipped or loose."""
+    examples = os.path.join(REPO_ROOT, "examples")
+    for name in sorted(os.listdir(examples)):
+        if not name.endswith(".zip"):
+            continue
+        with zipfile.ZipFile(os.path.join(examples, name)) as bundle:
+            for member in sorted(bundle.namelist()):
+                if member.lower().endswith(".fseq"):
+                    yield "{}:{}".format(name, member), bundle.read(member)
+    # The multi-car examples ship unpacked rather than as archives.
+    for root, _, files in sorted(os.walk(examples)):
+        for name in sorted(files):
+            if not name.lower().endswith(".fseq"):
+                continue
+            path = os.path.join(root, name)
+            with open(path, "rb") as handle:
+                yield os.path.relpath(path, REPO_ROOT), handle.read()
+
+
+def example_shows():
+    """Yield (label, Show) for every example show."""
+    for name, blob in example_fseqs():
+        handle = tempfile.NamedTemporaryFile(suffix=".fseq", delete=False)
+        handle.write(blob)
+        handle.close()
+        try:
+            yield name, vp.read_fseq(handle.name)
+        finally:
+            os.unlink(handle.name)
+
+
 class ShippedExampleTests(unittest.TestCase):
     """The example shows in this repository must analyse cleanly end to end."""
 
-    def _example_fseqs(self):
-        """Yield (label, bytes) for every example show, zipped or loose."""
-        examples = os.path.join(REPO_ROOT, "examples")
-        for name in sorted(os.listdir(examples)):
-            if not name.endswith(".zip"):
-                continue
-            with zipfile.ZipFile(os.path.join(examples, name)) as bundle:
-                for member in sorted(bundle.namelist()):
-                    if member.lower().endswith(".fseq"):
-                        yield "{}:{}".format(name, member), bundle.read(member)
-        # The multi-car examples ship unpacked rather than as archives.
-        for root, _, files in sorted(os.walk(examples)):
-            for name in sorted(files):
-                if not name.lower().endswith(".fseq"):
-                    continue
-                path = os.path.join(root, name)
-                with open(path, "rb") as handle:
-                    yield os.path.relpath(path, REPO_ROOT), handle.read()
-
     def test_every_example_show_analyses_on_every_vehicle(self):
         seen = 0
-        for name, blob in self._example_fseqs():
+        for name, blob in example_fseqs():
             seen += 1
             handle = tempfile.NamedTemporaryFile(suffix=".fseq", delete=False)
             handle.write(blob)
@@ -490,9 +512,318 @@ class ShippedExampleTests(unittest.TestCase):
         # The 48-channel shows and the 200-channel Cybertruck shows take
         # different paths through the channel map, so both must be present.
         counts = set()
-        for _, blob in self._example_fseqs():
+        for _, blob in example_fseqs():
             counts.add(struct.unpack("<I", blob[10:14])[0])
         self.assertEqual(counts, {48, 200})
+
+
+# --------------------------------------------------------------------------
+# Interior RGB -- https://github.com/teslamotors/light-show/issues/49
+# --------------------------------------------------------------------------
+
+WHITE = (255, 255, 255)
+RED = (255, 0, 0)
+BLACK = (0, 0, 0)
+
+DISPLAY = "Center Front Display"
+
+
+def interior_show(colours, frames=50, channel_count=200, step_time=20,
+                  start=10, length=10):
+    """Build a show that lights interior segments.
+
+    `colours` maps a segment name to one (r, g, b) or a list of them, each
+    held for `length` frames from `start`.
+    """
+    events = {}
+    for segment in vp.INTERIOR_SEGMENTS:
+        if segment.name not in colours:
+            continue
+        sequence = colours[segment.name]
+        if isinstance(sequence, tuple):
+            sequence = [sequence]
+        for index, colour in enumerate(sequence):
+            first = start + index * length
+            for channel, value in zip(segment.channels, colour):
+                events.setdefault(channel, []).append((first, length, value))
+    return make_show(frames, events, channel_count=channel_count,
+                     step_time=step_time)
+
+
+def usage_by_name(show):
+    return {u.segment.name: u for u in vp.interior_usage(show)}
+
+
+class InteriorChannelMapTests(unittest.TestCase):
+    """The segment table must match the show folder it describes."""
+
+    def test_segments_match_the_recorded_channel_map(self):
+        path = os.path.join(REPO_ROOT, "xlights", "channel_map.json")
+        with open(path) as handle:
+            models = json.load(handle)["models"]
+        for segment in vp.INTERIOR_SEGMENTS:
+            self.assertIn(segment.name, models)
+            recorded = models[segment.name]["StartChannel"]
+            self.assertTrue(
+                recorded.endswith(":{}".format(segment.start)),
+                "{} starts at {} in the show folder, not {}".format(
+                    segment.name, recorded, segment.start))
+
+    def test_readme_describes_a_display_and_five_accent_segments(self):
+        # README.md, "Interior RGB Lights": the Center Front Display, plus
+        # five accent segments on cars that have Interior Accent Lights.
+        accents = [s for s in vp.INTERIOR_SEGMENTS if s.accent]
+        display = [s for s in vp.INTERIOR_SEGMENTS if not s.accent]
+        self.assertEqual(len(accents), 5)
+        self.assertEqual([s.name for s in display], [DISPLAY])
+
+    def test_every_segment_owns_three_rgb_channels(self):
+        for segment in vp.INTERIOR_SEGMENTS:
+            self.assertEqual(len(segment.channels), 3)
+            for channel in segment.channels:
+                self.assertEqual(vp.CHANNELS[channel][1], vp.RGB)
+                self.assertIn(segment.name, vp.channel_name(channel))
+
+    def test_segments_do_not_overlap_and_fit_a_200_channel_export(self):
+        used = [c for s in vp.INTERIOR_SEGMENTS for c in s.channels]
+        self.assertEqual(len(used), len(set(used)))
+        self.assertLessEqual(vp.INTERIOR_LAST_CHANNEL, 200)
+
+
+class InteriorIsolationTests(unittest.TestCase):
+    """RGB bytes are colours, not the brightness enum used everywhere else.
+
+    None of the ramp, boolean or absent-channel rules may reach them.
+    """
+
+    def test_no_vehicle_finding_ever_cites_an_interior_channel(self):
+        show = interior_show({s.name: WHITE for s in vp.INTERIOR_SEGMENTS})
+        for profile in vp.VEHICLES.values():
+            for finding in vp.analyze(show, profile):
+                for channel in finding.channels:
+                    self.assertLess(
+                        channel, vp.INTERIOR_FIRST_CHANNEL,
+                        "{} reported interior channel {}".format(
+                            finding.code, channel))
+
+    def test_a_ramp_code_value_on_an_interior_channel_is_not_a_ramp(self):
+        # 178 is 70%, "Turn on; 500 ms" on a light channel. On an interior
+        # channel it is simply a colour component.
+        show = interior_show({DISPLAY: (ON_500, 0, 0)})
+        for profile in vp.VEHICLES.values():
+            found = vp.analyze(show, profile)
+            self.assertEqual(
+                [f for f in found if f.code in ("ramp-ignored",
+                                                "ramp-too-short")], [])
+
+    def test_interior_channels_are_not_reported_as_missing_hardware(self):
+        show = interior_show({DISPLAY: WHITE})
+        for profile in vp.VEHICLES.values():
+            found = vp.analyze(show, profile)
+            self.assertEqual(find(found, "channel-not-present"), [])
+
+
+class InteriorUsageTests(unittest.TestCase):
+    def test_measures_colours_changes_and_first_lit_time(self):
+        show = interior_show({DISPLAY: [RED, WHITE, RED]}, start=5, length=10)
+        entry = usage_by_name(show)[DISPLAY]
+
+        self.assertEqual(entry.colours, 2)          # red and white
+        self.assertEqual(entry.lit_frames, 30)
+        self.assertEqual(entry.first_lit_ms, 100)   # frame 5 at 20 ms
+        self.assertTrue(entry.lit)
+
+    def test_black_is_not_a_colour(self):
+        show = interior_show({DISPLAY: [BLACK, BLACK]})
+        entry = usage_by_name(show)[DISPLAY]
+
+        self.assertEqual(entry.colours, 0)
+        self.assertEqual(entry.lit_frames, 0)
+        self.assertFalse(entry.lit)
+        self.assertIsNone(entry.first_lit_ms)
+
+    def test_a_48_channel_show_has_no_interior_data_to_measure(self):
+        show = make_show(10, {13: [(0, 5, 255)]}, channel_count=48)
+        self.assertEqual(vp.interior_usage(show), [])
+
+    def test_every_segment_is_measured_independently(self):
+        show = interior_show({DISPLAY: WHITE, "Left Rear RGB": RED})
+        entries = usage_by_name(show)
+
+        self.assertTrue(entries[DISPLAY].lit)
+        self.assertTrue(entries["Left Rear RGB"].lit)
+        self.assertFalse(entries["Right Front RGB"].lit)
+
+
+class InteriorFindingTests(unittest.TestCase):
+    def test_48_channel_show_cannot_reach_the_interior(self):
+        show = make_show(10, {13: [(0, 5, 255)]}, channel_count=48)
+        findings = vp.analyze_interior(show)
+
+        self.assertEqual(codes(findings), ["interior-not-in-export"])
+        self.assertIn("176-193", findings[0].detail)
+
+    def test_200_channel_show_with_a_dark_cabin(self):
+        show = interior_show({})
+        findings = vp.analyze_interior(show)
+
+        self.assertEqual(codes(findings), ["interior-unused"])
+        self.assertEqual(findings[0].severity, vp.INFO)
+
+    def test_accents_without_the_display_is_a_warning(self):
+        show = interior_show({"Left Front RGB": WHITE,
+                              "Right Front RGB": WHITE,
+                              "Left Rear RGB": WHITE,
+                              "Right Rear RGB": WHITE,
+                              "Center Front RGB": WHITE})
+        findings = vp.analyze_interior(show)
+
+        warnings = find(findings, "interior-accents-without-display")
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0].severity, vp.WARNING)
+        self.assertIn("Interior Accent Lights", warnings[0].detail)
+
+    def test_display_only_is_the_safe_choice(self):
+        show = interior_show({DISPLAY: WHITE})
+        findings = vp.analyze_interior(show)
+
+        self.assertEqual(codes(findings), ["interior-display-only"])
+        self.assertEqual(findings[0].severity, vp.INFO)
+
+    def test_partial_accent_coverage_is_noted(self):
+        show = interior_show({DISPLAY: WHITE, "Left Front RGB": WHITE})
+        findings = vp.analyze_interior(show)
+
+        partial = find(findings, "interior-partial-accents")
+        self.assertEqual(len(partial), 1)
+        self.assertIn("4 of 5", partial[0].summary)
+
+    def test_a_fully_driven_cabin_reports_nothing(self):
+        show = interior_show({s.name: WHITE for s in vp.INTERIOR_SEGMENTS})
+        self.assertEqual(vp.analyze_interior(show), [])
+
+    def test_every_finding_has_a_summary_and_detail(self):
+        shows = [
+            make_show(10, {13: [(0, 5, 255)]}, channel_count=48),
+            interior_show({}),
+            interior_show({DISPLAY: WHITE}),
+            interior_show({"Left Front RGB": WHITE}),
+        ]
+        for show in shows:
+            for finding in vp.analyze_interior(show):
+                self.assertTrue(finding.summary)
+                self.assertTrue(finding.detail)
+                self.assertIn(finding.severity, (vp.ERROR, vp.WARNING, vp.INFO))
+
+
+class InteriorReportingTests(unittest.TestCase):
+    def test_text_report_includes_the_interior_section(self):
+        show = interior_show({DISPLAY: [RED, WHITE]})
+        text = vp.render_report(show, {"models": []}, verbose=True,
+                                interior=vp.analyze_interior(show))
+
+        self.assertIn("Interior RGB", text)
+        self.assertIn(DISPLAY, text)
+        self.assertIn("2 colour(s)", text)
+
+    def test_report_without_interior_is_unchanged(self):
+        show = interior_show({DISPLAY: WHITE})
+        self.assertNotIn("Interior RGB",
+                         vp.render_report(show, {"models": []}, verbose=True))
+
+    def test_dark_segments_are_hidden_unless_verbose(self):
+        show = interior_show({DISPLAY: WHITE})
+        interior = vp.analyze_interior(show)
+        quiet = vp.render_report(show, {"models": []}, False, interior)
+        loud = vp.render_report(show, {"models": []}, True, interior)
+
+        self.assertNotIn("not driven", quiet)
+        self.assertIn("not driven", loud)
+
+
+class InteriorCommandLineTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+
+    def write_show(self, show):
+        path = os.path.join(self._tmp.name, "show.fseq")
+        raw = build_fseq_bytes(show.frame_count,
+                               channel_count=show.channel_count,
+                               step_time=show.step_time_ms)
+        with open(path, "wb") as handle:
+            handle.write(raw[:HEADER_BYTES] + show.data)
+        return path
+
+    def run_main(self, *argv):
+        stdout = io.StringIO()
+        original = sys.stdout
+        sys.stdout = stdout
+        try:
+            code = vp.main(list(argv))
+        finally:
+            sys.stdout = original
+        return code, stdout.getvalue()
+
+    def test_json_carries_the_interior_segments(self):
+        path = self.write_show(interior_show({DISPLAY: [RED, WHITE]}))
+        code, out = self.run_main(path, "--vehicle", "models", "--json")
+        payload = json.loads(out)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(payload["interior"]["segments"]), 6)
+        display = payload["interior"]["segments"][0]
+        self.assertEqual(display["name"], DISPLAY)
+        self.assertEqual(display["channels"], [176, 177, 178])
+        self.assertFalse(display["accent"])
+        self.assertTrue(display["lit"])
+
+    def test_json_for_a_48_channel_show_has_no_segments(self):
+        show = make_show(10, {13: [(0, 5, 255)]}, channel_count=48)
+        code, out = self.run_main(self.write_show(show), "--vehicle", "models",
+                                  "--json")
+        payload = json.loads(out)
+
+        self.assertEqual(payload["interior"]["segments"], [])
+        self.assertEqual(
+            [f["code"] for f in payload["interior"]["findings"]],
+            ["interior-not-in-export"])
+
+    def test_strict_fails_on_the_interior_warning(self):
+        path = self.write_show(interior_show({"Left Front RGB": WHITE}))
+        self.assertEqual(self.run_main(path, "--vehicle", "models")[0], 0)
+        self.assertEqual(
+            self.run_main(path, "--vehicle", "models", "--strict")[0], 1)
+
+
+class ShippedExampleInteriorTests(unittest.TestCase):
+    """Real shows, to keep the segment table honest about the file format."""
+
+    def _shows(self):
+        return example_shows()
+
+    def test_at_least_one_example_drives_the_interior(self):
+        lit = {name: [u.segment.name for u in vp.interior_usage(show) if u.lit]
+               for name, show in self._shows()}
+        self.assertTrue(any(lit.values()),
+                        "no shipped example lights the cabin: {}".format(lit))
+
+    def test_a_show_that_drives_the_cabin_drives_the_display_too(self):
+        # Every example that uses the accents also uses the display, so none
+        # of them trips the optional-hardware warning.
+        for name, show in self._shows():
+            findings = vp.analyze_interior(show)
+            self.assertEqual(
+                find(findings, "interior-accents-without-display"), [],
+                "{} drives accents without the display".format(name))
+
+    def test_interior_usage_never_raises_on_a_real_show(self):
+        seen = 0
+        for _, show in self._shows():
+            seen += 1
+            usage = vp.interior_usage(show)
+            self.assertIn(len(usage), (0, len(vp.INTERIOR_SEGMENTS)))
+        self.assertGreater(seen, 0)
 
 
 if __name__ == "__main__":

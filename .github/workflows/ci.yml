@@ -88,6 +88,37 @@ jobs:
           fi
           echo "Analysed $found example show(s)."
 
+      - name: Report what every example does with the interior lights
+        # Issue #49: the cabin channels only exist in a 200-channel export, so
+        # the examples must cover both "cannot reach them" and "drives them".
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import glob, sys
+          sys.path.insert(0, "tools")
+          import vehicle_preview as vp
+
+          reached, lit = 0, 0
+          paths = sorted(glob.glob("examples/**/*.fseq", recursive=True) +
+                         glob.glob("_examples/**/*.fseq", recursive=True))
+          for path in paths:
+              show = vp.read_fseq(path)
+              usage = vp.interior_usage(show)
+              codes = [f.code for f in vp.analyze_interior(show)]
+              if usage:
+                  reached += 1
+                  if any(u.lit for u in usage):
+                      lit += 1
+              else:
+                  assert codes == ["interior-not-in-export"], (path, codes)
+              print("{:70s} {:3d}ch  {}".format(
+                  path[-70:], show.channel_count, ", ".join(codes) or "cabin fully driven"))
+          assert paths, "no example shows were found"
+          assert reached, "no example can reach the interior channels"
+          assert lit, "no example drives the interior lights"
+          print("{} show(s) can reach the cabin, {} drive it.".format(reached, lit))
+          PYEOF
+
       - name: Check a multi-show USB layout end to end
         # Builds the layout issue #48 asked for -- several shows side by side
         # in one LightShow folder -- out of the shipped examples, and asserts

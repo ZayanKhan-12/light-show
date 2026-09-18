@@ -118,6 +118,39 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### The interior is a different kind of channel
+
+The cabin lights are the answer to
+[#49](https://github.com/teslamotors/light-show/issues/49), which was asked in
+2022 and answered "no" because they did not exist yet. They do now:
+`README.md`, "Interior RGB Lights" gives full RGB control of the Center Front
+Display plus five accent segments, and `tools/vehicle_preview.py` reports what
+a show does with them.
+
+What makes them different from every other channel in the file:
+
+- **Three channels are one colour.** Channels 176-193 are six segments of
+  red/green/blue, starting at 176. The `StartChannel` of each one is recorded
+  in `xlights/channel_map.json`, and a test asserts the two agree — that file
+  is the source of truth, not the constant in the tool.
+- **The byte is not the brightness enum.** Everywhere else a value decodes
+  through `RAMP_CODES`/`CLOSURE_CODES`; here every value of every component is
+  meaningful colour. 178 is "Turn on; 500 ms" on a light channel and simply a
+  red level on an interior one. They carry the `RGB` channel kind, and every
+  check that walks `CHANNELS` skips that kind. Adding a check that forgets to
+  is the easiest bug to introduce here, so `InteriorIsolationTests` asserts no
+  per-vehicle finding ever cites a channel at or above 176.
+- **Segment, not channel, is the unit.** "Left Rear RGB (green) is not fitted"
+  would be three findings saying one thing, so the interior is analysed by
+  `analyze_interior()` and reported once, above the per-vehicle sections.
+- **The findings are vehicle-independent on purpose.** The README says the
+  accent segments exist "on cars with Interior Accent Lights" without naming
+  which builds those are, so there is nothing to report per vehicle. Do not
+  guess a vehicle list; the display is the segment that is safe to rely on,
+  which is why a show that drives only the accents gets a warning.
+- **Only a 200-channel export has them.** A 48-channel show has no interior
+  data at all, which is what `interior-not-in-export` says.
+
 ## The drive is an interface too
 
 The car finds custom shows by convention, not by a manifest: every `.fseq` at
