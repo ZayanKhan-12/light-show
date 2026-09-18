@@ -29,6 +29,7 @@ almost every change is a change to something a car will eventually play.
 | `tools/multi_car_check.py` | Checks that the per-car shows of a cross-vehicle set agree with each other. |
 | `tools/docs_check.py` | Checks the documentation's links, file references and the community show list, without touching the network. |
 | `tools/sequence_check.py` | Reads a saved xLights `.xsq` and reports what will get in the way later. |
+| `tools/channel_probe.py` | Builds a show that lights one channel at a time, to see what each drives on a particular car. |
 | `tests/` | `unittest` suite, standard library only. |
 | `examples/` | Example shows, distributed as zips. |
 
@@ -120,6 +121,41 @@ comment. If the code and the README disagree, that is a bug worth raising rather
 than silently picking one. Where the README is simply silent — it describes the
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
+
+### A mapping report is answered with an instrument, not an edit
+
+[#72](https://github.com/teslamotors/light-show/issues/72) reports that Inner
+and Outer Main Beam are swapped on a 2023 Fremont Model 3 RWD. It sat for two
+years because nobody could act on it: the reader has no such car, the reporter
+had no way to show what they saw, and the one response that must never be made
+is the obvious one.
+
+**Do not remap a channel to make a report go away.** `xlights/channel_map.json`
+is a public API — every `.fseq` anyone has exported depends on it — and
+swapping two entries on one unverified report about one build would break
+every existing show on every car. `tools/xlights_layers.py verify` and CI
+enforce that, but the instinct is the thing to correct.
+
+What can be done:
+
+- **Give the reporter a way to prove it.** `tools/channel_probe.py` builds a
+  show that lights one channel at a time with a tone at each change, so a
+  phone video settles the question on the car it is about. The tool checks its
+  own output with `validator.validate()` before writing it.
+- **Do not adjudicate from the images.** The headlamp diagrams in `images/`
+  are photographs with numbered overlays; which end of a lamp is inboard is
+  not reliably readable from them, and a confident answer drawn that way would
+  be a guess wearing evidence's clothes. Say what the show folder maps and let
+  the car settle the rest.
+- **Document a confirmed difference, never correct it.** The precedents are
+  "Cybertruck Light Remapping" and the pre-October-2020 Model 3 tail lights:
+  both are cars where a channel drives something other than its name, recorded
+  as a per-vehicle note. `BuildVariant` in `tools/vehicle_preview.py` is where
+  one becomes analysable.
+
+Closures are opt-in in the probe and are opened, never danced: an Open costs
+one actuation against a limit as low as 3, and the tool says it leaves them
+open so nobody walks away from a raised liftgate.
 
 ### Not every error here is ours, and not every title is true
 

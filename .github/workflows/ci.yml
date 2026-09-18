@@ -120,6 +120,25 @@ jobs:
           fi
           echo "Analysed $found example show(s)."
 
+      - name: Build a channel probe and check it is playable
+        # Issue #72: the probe is how an owner answers a mapping question on
+        # their own car, so the show it writes has to be one the car accepts.
+        run: |
+          set -euo pipefail
+          rm -rf _probe && mkdir -p _probe/LightShow
+          python3 tools/channel_probe.py _probe/LightShow/probe --group headlights
+          # Not --strict: the runner's own filesystem is not exFAT, and that
+          # says nothing about whether the probe is a playable show.
+          python3 tools/usb_check.py _probe
+          python3 -c "
+          import sys
+          sys.path.insert(0, '.')
+          import validator
+          with open('_probe/LightShow/probe.fseq', 'rb') as handle:
+              results = validator.validate(handle)
+          print('probe validates:', results)
+          "
+
       - name: Check every shipped xLights sequence
         # Issue #66: a sequence with no timing marks is the state that
         # produces the "Graphics Driver Problem" dialog. None of the shipped
