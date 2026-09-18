@@ -230,6 +230,97 @@ class ContentsTests(ShowFolderTestCase):
         self.assertEqual(findings[0].severity, sf.WARNING)
 
 
+class CrossVehicleTests(ShowFolderTestCase):
+    """Issue 134: extending the cross-vehicle folder past five cars.
+
+    A car is a controller, 77 models named "<car> <model>" on that
+    controller, and a mapping file. Duplicating that by hand is where it goes
+    wrong, and each of these is a mistake someone actually makes.
+    """
+
+    def build(self, cars, models=("Rear Light Bar", "Brake Lights"),
+              controller_for=None, mappings=None, drop=()):
+        folder = self.builder.show_folder(cars=len(cars))
+        entries = []
+        for car in cars:
+            for model in models:
+                if (car, model) in drop:
+                    continue
+                owner = (controller_for or {}).get(car, car)
+                entries.append(
+                    '    <model name="{} {}" StartChannel="!Model S {}:1"/>'
+                    .format(car, model, owner))
+        with open(os.path.join(folder, sf.RGBEFFECTS), "w",
+                  encoding="utf-8") as handle:
+            handle.write(RGBEFFECTS_XML.format(models="\n".join(entries)))
+        for car in (cars if mappings is None else mappings):
+            open(os.path.join(folder,
+                              "{}{}.xmap".format(sf.MAPPING_PREFIX, car)),
+                 "w").close()
+        return folder
+
+    def test_a_consistent_set_of_cars_passes(self):
+        report = sf.check_show_folder(self.build([1, 2, 3]))
+
+        self.assertEqual(report.counts()[sf.ERROR], 0)
+        self.assertEqual(report.counts()[sf.WARNING], 0)
+
+    def test_a_car_missing_a_model_is_an_error(self):
+        report = sf.check_show_folder(
+            self.build([1, 2], drop={(2, "Brake Lights")}))
+        findings = self.find(report, "cars-do-not-match")
+
+        self.assertEqual(len(findings), 1)
+        self.assertIn("Brake Lights", findings[0].detail)
+
+    def test_a_duplicate_left_on_the_wrong_controller_is_an_error(self):
+        """The usual mistake: a copied model keeps its StartChannel."""
+        report = sf.check_show_folder(
+            self.build([1, 2], controller_for={2: 1}))
+        findings = self.find(report, "car-on-wrong-controller")
+
+        self.assertEqual(len(findings), 1)
+        self.assertIn("Model S 1", findings[0].detail)
+
+    def test_a_car_with_no_mapping_file_is_a_warning(self):
+        report = sf.check_show_folder(self.build([1, 2], mappings=[1]))
+        findings = self.find(report, "no-mapping-for-car")
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, sf.WARNING)
+        self.assertIn("cross_vehicle_mapping_2.xmap", findings[0].summary)
+
+    def test_the_car_count_is_reported(self):
+        report = sf.check_show_folder(self.build([1, 2, 3, 4, 5, 6]))
+        findings = self.find(report, "cross-vehicle-cars")
+
+        self.assertEqual(len(findings), 1)
+        self.assertIn("6 cars", findings[0].summary)
+
+    def test_a_single_car_folder_is_not_checked_this_way(self):
+        report = sf.check_show_folder(self.builder.show_folder(cars=1))
+        found = self.codes(report)
+        for code in ("cars-do-not-match", "car-on-wrong-controller",
+                     "no-mapping-for-car", "cross-vehicle-cars"):
+            self.assertNotIn(code, found)
+
+    def test_the_shipped_cross_vehicle_folder_is_consistent(self):
+        import tempfile
+        import zipfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with zipfile.ZipFile(os.path.join(
+                    REPO_ROOT,
+                    "xlights/tesla_xlights_cross_vehicle_folder.zip")) as z:
+                z.extractall(tmp)
+            report = sf.check_show_folder(
+                os.path.join(tmp, "tesla_xlights_cross_vehicle_folder"))
+
+        self.assertEqual(report.counts()[sf.ERROR], 0)
+        self.assertEqual(report.counts()[sf.WARNING], 0)
+        self.assertEqual(report.cars, 5)
+
+
 class AudioTests(ShowFolderTestCase):
     def test_a_format_xlights_never_lists_is_a_warning(self):
         folder = self.builder.show_folder()
