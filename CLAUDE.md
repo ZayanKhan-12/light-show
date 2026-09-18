@@ -123,6 +123,39 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### Check the shipped shows before deciding a report is unreproducible
+
+[#77](https://github.com/teslamotors/light-show/issues/77) says a Model X
+halts a few seconds into any custom show, "even for the one I download from
+this git repo", unless Dance Moves is switched off. `README.md` has carried
+the cause in "Other notes" all along: moving windows during Model X door
+movement can cause false pinch detections, **stopping the light show**. It is
+the only closure mistake whose consequence is the whole show ending, and
+nothing checked for it.
+
+Writing that check, I first sampled a few `examples/` files, saw no door
+commands, and wrote a test asserting no shipped example drives a Model X door.
+The test failed. The sample had missed the two **zipped** examples, and both
+of them -- including the show featured in vehicles from 2022.44.25 -- open the
+powered doors and then move the windows a few seconds later, inside the ~20 s
+the doors take. The reporter's shows were the repository's own.
+
+Two habits from that:
+
+- **`example_shows()` walks the zips as well as the loose folders.** Any
+  survey of "what do the shipped shows do" has to go through it, not a glob.
+  A glob over `examples/**/*.fseq` silently covers only the multi-car sets.
+- **When a test written from a sample fails, the sample was wrong before the
+  test was.** The failing assertion here was the interesting result, and
+  rewriting it to record the real state is what turned an unreproducible
+  report into a reproduction.
+
+`pinch_doors` is empty for every vehicle but Model X, because it is the only
+supported vehicle with powered doors, and the movement windows come from
+"Closure Movement Durations" — which is also why `ClosureFamily` now carries
+`close_ms`: a door closing is only risky for the 3 to 8 s it takes, not the 22
+an open takes.
+
 ### One report is a note, not a model
 
 [#76](https://github.com/teslamotors/light-show/issues/76) is an owner saying

@@ -75,6 +75,7 @@ Playing a custom show is a vehicle capability. It cannot be enabled by the show 
     <img src="/images/start_show_button.png?raw=true" width="315" />
 
 - If the files on the USB flash drive meet the requirements, then the custom shows will be available to select from the drop-down menu.
+- The confirmation screen has a **Dance Moves** checkbox, which is what allows the show to move the charge port, mirrors, windows and trunk. Unchecking it plays the lights only: every [closure](#closures) command in the show is ignored, so a show that depends on them looks incomplete.
 
     <img src="/images/multi_select_usb.png?raw=true" widtht="442" />
 
@@ -85,6 +86,7 @@ Playing a custom show is a vehicle capability. It cannot be enabled by the show 
 - If the popup title is "Light Show" instead of "Custom Light Show", then the requirements are not being met for the USB flash drive formatting and/or required folder and files. [usb_check.py](#usb_check) reports which requirement a drive is missing.
 - If Toybox has no Light Show entry at all, check the vehicle and software version against [Supported Vehicles](#supported-vehicles) before looking at the drive.
 - Error messages will be provided if the required files exist but there is a problem with the light show sequence file. The ones owners have reported are listed below.
+- If the show starts and then stops partway through on a **Model X**, the likely cause is a window moving while a door is still opening or closing, which can trigger a false pinch detection and end the show. See [Model X doors and windows](#modelx_pinch). Unchecking Dance Moves stops it happening by stopping every closure from moving, which is a workaround rather than a fix.
 
 ### <a name="vehicle_errors"></a>Error messages from the vehicle
 Run [validator.py](#light-show-sequence-validator-script) on a show before taking it to the car; it checks the same things and explains what it finds.
@@ -442,6 +444,7 @@ Model 3  -  4 error(s), 7 warning(s), 19 note(s)
 | ```channel-not-present``` | The show drives a light or closure this vehicle does not have. |
 | ```channel-optional-hardware``` | The light is missing on some builds of this vehicle, for example front fog on Model 3 Standard Range +. |
 | ```channel-has-no-effect``` | The light is fitted but follows another channel on this build, so its own channel does nothing. |
+| ```window-during-door-movement``` | A window moves while a Model X door is still moving, which can trigger a false pinch detection and stop the show. |
 | ```interior-not-in-export``` | The show has no [interior RGB](#interior_rgb) channels, because it was exported from an older project directory. |
 | ```interior-unused``` | The show can drive the interior lights and leaves every segment dark. |
 | ```interior-accents-without-display``` | Only the optional accent segments are driven, so nothing lights up in a car without Interior Accent Lights. |
@@ -605,7 +608,10 @@ To command a closure to move in a particular manner, place an effect with the fo
 - For closures that do not support Dance, it's recommended to use Open and Close requests to cause movement during the show.
 - It's recommended to avoid closing windows during the show so that music stays more audible. Music only plays from the cabin speakers during the show.
 - Closures can only dance for a limited time before encountering thermal limits. This depends on multiple factors including ambient temperature, etc. If thermal limits are encountered, the given closure will stop moving until it cools down. Dancing for ~30s or less per show is recommended.
-- Moving Windows during Model X door movement can cause false pinch detections, stopping the light show.
+- <a name="modelx_pinch"></a>Moving Windows during Model X door movement can cause false pinch detections, stopping the light show.
+    - This is the only closure mistake that ends the whole show rather than misbehaving on its own, and it is specific to Model X, the only supported vehicle with powered doors.
+    - A door keeps moving after its command: about 22 s to open a front door, 20 s for a falcon door, 3 s and 8 s to close them. Leave the windows alone for that long after any door command, not just while the effect is on the timeline.
+    - [vehicle_preview.py](#vehicle_preview) reports this as ```window-during-door-movement```. Both of the older single-car examples in [examples/](examples) trip it: they open the doors and move the windows a few seconds later, so on a Model X they can stop early ([#77](https://github.com/teslamotors/light-show/issues/77)). The multi-car examples never drive the doors and are unaffected.
 
 ### Closures Command Limitations
 - All closures have actuation limits listed in the table above. Only Open, Close, and Dance count towards the actuation limits. The limits are counted separately for each individual closure.

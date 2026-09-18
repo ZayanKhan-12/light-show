@@ -253,6 +253,41 @@ jobs:
           print("{} show(s) can reach the cabin, {} drive it.".format(reached, lit))
           PYEOF
 
+      - name: Report Model X pinch risk in every example
+        # Issue #77: a window moving while a Model X door is still moving can
+        # stop the show. The two older examples do it; this step keeps that
+        # visible rather than letting it drift unnoticed.
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import glob, sys, zipfile, tempfile, os, io
+          sys.path.insert(0, "tools")
+          import vehicle_preview as vp
+
+          def shows():
+              for archive in sorted(glob.glob("examples/*.zip")):
+                  with zipfile.ZipFile(archive) as bundle:
+                      for member in bundle.namelist():
+                          if member.lower().endswith(".fseq"):
+                              handle = tempfile.NamedTemporaryFile(
+                                  suffix=".fseq", delete=False)
+                              handle.write(bundle.read(member))
+                              handle.close()
+                              yield archive, vp.read_fseq(handle.name)
+                              os.unlink(handle.name)
+              for path in sorted(glob.glob("examples/**/*.fseq", recursive=True)):
+                  yield path, vp.read_fseq(path)
+
+          tripped = 0
+          for name, show in shows():
+              findings = [f for f in vp.analyze(show, vp.VEHICLES["modelx"])
+                          if f.code == "window-during-door-movement"]
+              if findings:
+                  tripped += 1
+                  print("{:62s} {}".format(name[-62:], findings[0].summary))
+          print("%d shipped show(s) can stop early on a Model X." % tripped)
+          PYEOF
+
       - name: Report the closure command budget of every example
         # Issue #50: the per-closure actuation limits are still real. This
         # also guards the counting rule -- if commands were counted per frame
