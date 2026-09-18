@@ -6,8 +6,26 @@ Welcome to the Tesla Light Show xLights guide! You can create and run your own l
 
 ## Running a custom show on a vehicle
 A custom show can be run on a supported vehicle by loading it via a USB flash drive. Create and share your shows with others! A single show can be shared and run on any supported vehicle; they are not model-specific. The sequence data is stored in a .fseq file and the music comes from your choice of .mp3 or .wav.
-### Download a Show
-Multiple light show repositories can be found online. A screenshot from [XLightShows](https://xlightshows.io/) and [TeslaLightShare.io](https://teslalightshare.io/) is below.
+### <a name="download_a_show"></a>Download a Show
+Custom shows are shared by the community. These sites host shows to download:
+
+<!-- community-shows: alphabetical, one "- [Name](https://url)" per line. See tools/docs_check.py. -->
+- [TeslaLightShare.io](https://teslalightshare.io/)
+- [TeslaLightShows.io](https://www.teslalightshows.io/)
+- [XLightShows](https://xlightshows.io/)
+<!-- /community-shows -->
+
+The list is alphabetical and is not a ranking. These sites are run by the community: Tesla does not operate, review or endorse them, and what each one offers is between you and the site. To have a site added, open a [pull request](https://github.com/teslamotors/light-show/pulls) adding it to the list above.
+
+A downloaded show is a binary file from a stranger. Check one before you use it:
+
+```
+python3 validator.py lightshow.fseq          # is it a show the car can play?
+python3 tools/vehicle_preview.py lightshow.fseq --vehicle model3
+python3 tools/usb_check.py /Volumes/LIGHTSHOW
+```
+
+Screenshots from two of the sites:
 
 <a href="https://xlightshows.io/"><img src="/images/xlightshows_screenshot.png?raw=true" width="1000"/></a>
 
@@ -196,6 +214,22 @@ python3 tools/xlights_layers.py apply    # write layer_groups.json into the .zip
 .fseq files exported from earlier versions of this project from silently
 breaking. Contributors changing the show folder should run it before opening a
 pull request; it needs only Python 3.7+ and no packages.
+
+## Checking the documentation
+This guide is held together by links: cross-references between its own sections,
+images, the tools, the example archives, and the [community show list](#download_a_show).
+`tools/docs_check.py` checks them without touching the network:
+
+```
+python3 tools/docs_check.py          # run by CI
+python3 tools/docs_check.py -v       # include the notes
+```
+
+It reports a cross-reference that points at a section which no longer exists, a
+link to a file that is not in the repository, an external link that is not https
+or that carries a tracking parameter, and a community list that has fallen out of
+alphabetical order or gained a duplicate. It never fetches a URL, so whether a
+third-party site is up is not something a pull request here can fail on.
 
 Users who do not have Python installed can instead use [validator-windows.exe](validator-windows.exe?raw=true) or [validator-macos](validator-macos.zip?raw=true) (on macOS, run with Ctrl + Left Click -> Open).
 
