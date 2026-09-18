@@ -33,6 +33,7 @@ almost every change is a change to something a car will eventually play.
 | `tools/show_folder_check.py` | Checks the folder given to xLights as the show folder, and the audio files in it. |
 | `tools/fseq_export.py` | Writes out what a `.fseq` does, one row per effect, with each value decoded. |
 | `tools/examples_index.py` | Lists what each example in `examples/` ships; the README table is its output. |
+| `tools/diagnose.py` | Runs whichever checks apply to what you point it at, and says which layer is at fault. |
 | `tests/` | `unittest` suite, standard library only. |
 | `examples/` | Example shows, distributed as zips. |
 
@@ -124,6 +125,37 @@ comment. If the code and the README disagree, that is a bug worth raising rather
 than silently picking one. Where the README is simply silent — it describes the
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
+
+### Ruling a layer out is an answer
+
+[#98](https://github.com/teslamotors/light-show/issues/98) is a good bug
+report: a 2022 Model Y, reproducible, with the trigger isolated to a FaceTime
+call on the paired phone. "Screen will say 'enjoy the show' then crash."
+
+Nothing in this repository can fix it, and that is not a dodge — it is the
+finding. The show was *accepted*: the drive was read, the file was parsed, the
+car started playing. Everything this repository owns had already succeeded by
+the time it failed.
+
+Two gaps made that hard to say:
+
+- **There was no statement of scope.** No `CONTRIBUTING.md`, and the README
+  said only where *xLights* bugs go. A tracker with no boundary collects
+  reports nobody reading it can act on, and they sit for years — which is
+  unfair to the reporter more than to anyone else.
+- **There are nine tools and no entry point.** Somebody with a misbehaving
+  show had to guess which to run.
+
+`tools/diagnose.py` is the entry point, and it is a dispatcher, not a tenth
+implementation: it identifies what it was handed, calls the tools that apply,
+and finishes with what has been ruled out. The closing paragraph is the part
+that matters — when everything checks out, it says the remaining layer is the
+car's software and that nothing here can change it.
+
+**Write that conclusion honestly.** The temptation with a diagnostic is to
+keep suggesting things. A tool that says "your drive, your file and your show
+are all fine, so this is the car" has given the reporter exactly what they
+need to escalate, and pretending otherwise wastes their time.
 
 ### The answer can already be in the repository and still be unfindable
 

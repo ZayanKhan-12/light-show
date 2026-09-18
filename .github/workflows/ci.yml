@@ -253,6 +253,22 @@ jobs:
           print("{} show(s) can reach the cabin, {} drive it.".format(reached, lit))
           PYEOF
 
+      - name: Diagnose a drive end to end
+        # Issue #98: the entry point has to run and reach a conclusion on
+        # every kind of input, since it is what a confused owner is told to
+        # use first.
+        run: |
+          set -euo pipefail
+          rm -rf _diag && mkdir -p _diag/LightShow
+          python3 tools/channel_probe.py _diag/LightShow/probe --group headlights
+          python3 tools/diagnose.py _diag --vehicle cybertruck
+          python3 tools/diagnose.py _diag/LightShow/probe.fseq --vehicle cybertruck > /dev/null
+          python3 tools/diagnose.py \
+            "examples/lightshow_example_3_The_Arrival_5_Car/Car #1/LightShow/lightshow.xsq" > /dev/null
+          python3 tools/diagnose.py examples/lightshow_example_5_Cyber_Symphony_4_Car > /dev/null
+          rm -rf _diag
+          echo "diagnose reached a conclusion on every input kind."
+
       - name: Count ramp effects in each documented band
         # Issue #89: README.md guarantees a setpoint at ramp+50 ms and no
         # setpoint at ramp-100 ms, and says nothing in between. Shows do land
