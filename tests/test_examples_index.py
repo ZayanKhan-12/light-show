@@ -174,6 +174,42 @@ class ShippedExamplesTests(unittest.TestCase):
             [n for n in single if "Arrival" in n], [],
             "a single-car Arrival now ships; update the README")
 
+    def test_a_show_without_a_source_points_at_the_one_that_has_it(self):
+        """Issue 125, fixed where the confusion happens.
+
+        Someone who downloads the eight-car Ready for Assault and finds no
+        .xsq is reading that folder's own README, not the index. Each
+        multi-car example that ships no source names the single-car archive
+        that does.
+        """
+        pairs = {
+            "lightshow_example_4_Ready_for_Assault_8_Car":
+                "lightshow_example_6_Ready_for_Assault_1_Car.zip",
+            "lightshow_example_5_Cyber_Symphony_4_Car":
+                "lightshow_example_7_Cyber_Symphony_1_Car.zip",
+        }
+        for folder, archive in pairs.items():
+            example = self.examples[folder]
+            self.assertFalse(example.has_source, folder)
+
+            readme = os.path.join(ei.EXAMPLES_DIR, folder, "README.md")
+            with open(readme, encoding="utf-8") as handle:
+                text = handle.read()
+            self.assertIn(archive, text, folder)
+
+    def test_every_multi_car_example_without_a_source_is_covered(self):
+        """So a future one cannot be added without the same pointer."""
+        for name, example in self.examples.items():
+            if example.cars <= 1 or example.has_source:
+                continue
+            readme = os.path.join(ei.EXAMPLES_DIR, name, "README.md")
+            self.assertTrue(os.path.isfile(readme), name)
+            with open(readme, encoding="utf-8") as handle:
+                text = handle.read()
+            self.assertIn(".xsq", text,
+                          "{} ships no source and does not say where one "
+                          "is".format(name))
+
     def test_the_readme_records_that_gap(self):
         with open(os.path.join(REPO_ROOT, "README.md"),
                   encoding="utf-8") as handle:

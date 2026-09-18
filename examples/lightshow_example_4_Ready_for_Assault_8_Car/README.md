@@ -10,7 +10,11 @@ The vehicles should be arranged per this illustration:
 
 Putting them in a circle is optional but recommended.
 
-The shows can currently not be edited using the default xLights show folder.
+The shows can currently not be edited using the default xLights show folder, and no .xsq ships in this folder.
+
+To read how this show is put together, use the single-car version instead: [../lightshow_example_6_Ready_for_Assault_1_Car.zip](../lightshow_example_6_Ready_for_Assault_1_Car.zip?raw=true) is the same "Ready for Assault" show arranged for one car and it does include its .xsq. That is the one to open if you are learning the newer mappings, such as the centre screen and the interior RGB segments ([#125](https://github.com/teslamotors/light-show/issues/125)).
+
+If all you have is a .fseq, `tools/fseq_export.py` writes out what it does channel by channel, and `tools/multi_car_check.py` checks a set of per-car shows agrees with itself.
 
 The coordinated show will also work with fewer than 8 vehicles (e.g., 4 vehicles using shows 1, 2, 3 and 4).
 
