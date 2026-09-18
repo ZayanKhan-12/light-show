@@ -84,6 +84,8 @@ Playing a custom show is a vehicle capability. It cannot be enabled by the show 
 ### Light Show Community
 [reddit.com/r/TeslaLightShow/](https://www.reddit.com/r/TeslaLightShow/)
 
+Shows themselves are made and shared by the community rather than published here, so a request for a particular song is best taken to one of the [sites above](#download_a_show) or to the subreddit. [CONTRIBUTING.md](CONTRIBUTING.md) covers what this repository can act on and where everything else goes.
+
 ### Debug
 - If the popup title is "Light Show" instead of "Custom Light Show", then the requirements are not being met for the USB flash drive formatting and/or required folder and files. [usb_check.py](#usb_check) reports which requirement a drive is missing.
 - If Toybox has no Light Show entry at all, check the vehicle and software version against [Supported Vehicles](#supported-vehicles) before looking at the drive.
