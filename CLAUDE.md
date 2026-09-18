@@ -126,6 +126,32 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### A requirement about a volume, not a device
+
+[#111](https://github.com/teslamotors/light-show/issues/111) is an owner
+offering a documentation improvement rather than reporting a fault: they run
+one drive for everything by splitting it into partitions, TeslaCam on one and
+LightShow on another, and it works.
+
+`README.md` says the drive "must not contain a base-level TeslaCam folder",
+which reads as a statement about the physical device. The reports say it is
+about the **volume**, and three owners across a 2023 Model 3 and a 2024
+Highland agree. That clears the bar this repository uses for these — a single
+report is documented, a corroborated one is stated — so it is in the README as
+an owner-reported layout, attributed, and explicitly not described as a
+supported configuration.
+
+`usb_check.py` had the semantics right already, by accident of construction:
+it only ever looks at the volume it was pointed at, so TeslaCam on another
+partition was never its business. What it had wrong was the advice, which
+offered "use a separate flash drive" and nothing else. It now names the
+partition route, and a test asserts a TeslaCam folder on a sibling volume does
+not trip it — the property the whole layout depends on.
+
+The general shape: when documentation says "the drive" and the tool operates
+on "the volume", find out which one the rule is really about before repeating
+either.
+
 ### An empty issue is a form problem
 
 [#110](https://github.com/teslamotors/light-show/issues/110) is titled

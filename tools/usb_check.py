@@ -58,7 +58,11 @@ FSEQ_EXT = ".fseq"
 AUDIO_EXTS = (".wav", ".mp3")
 
 # README, "USB flash drive requirements": a base-level TeslaCam folder stops
-# the drive being read as a light show drive.
+# the drive being read as a light show drive.  The rule is about the volume
+# rather than the physical device, which is why splitting a drive into
+# partitions works for the owners in
+# https://github.com/teslamotors/light-show/issues/111 -- and why this tool
+# only ever looks at the volume it was pointed at.
 TESLACAM_FOLDER = "TeslaCam"
 
 # README, "USB flash drive requirements".
@@ -562,9 +566,12 @@ def check_drive_root(root: str) -> List[Finding]:
             findings.append(Finding(
                 ERROR, "TESLACAM_PRESENT",
                 "The drive has a base-level {} folder.".format(name),
-                "A drive used for Dashcam or Sentry recordings is not read as "
-                "a light show drive. Use a separate flash drive, or move the "
-                "{} folder off this one.".format(name),
+                "A volume used for Dashcam or Sentry recordings is not read "
+                "as a light show drive. Move the {} folder off this volume, "
+                "use a separate drive, or split the drive into partitions and "
+                "keep them apart -- owners report that working, with "
+                "{} on one partition and LightShow on another.".format(
+                    name, name),
                 path=path, readme="USB flash drive requirements"))
 
     update_like = [n for n in names if _looks_like_update_file(root, n)]

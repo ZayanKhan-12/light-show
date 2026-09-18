@@ -9,6 +9,7 @@ assert the tool names the mistake instead of silently listing nothing.
 import io
 import json
 import os
+import shutil
 import struct
 import sys
 import tempfile
@@ -336,6 +337,32 @@ class DriveLevelTests(UsbCheckTestCase):
         report = uc.check_drive(drive.show_folder)
 
         self.assertCode(report, "TESLACAM_PRESENT")
+
+    def test_the_teslacam_advice_offers_the_partition_route(self):
+        """Issue 111: owners keep both on one drive by splitting it."""
+        drive = self.drive()
+        drive.add_show("one")
+        drive.makedirs("TeslaCam")
+        finding = [f for f in uc.check_drive(self.tmpdir).findings
+                   if f.code == "TESLACAM_PRESENT"][0]
+
+        self.assertIn("partitions", finding.detail)
+        self.assertIn("volume", finding.detail)
+
+    def test_a_teslacam_folder_on_another_volume_is_not_this_drive(self):
+        """The check only ever looks at the volume it was given.
+
+        That is what makes the partition layout work: TeslaCam beside the
+        LightShow folder is a problem, TeslaCam on a different volume is not
+        this tool's business.
+        """
+        drive = self.drive()
+        drive.add_show("one")
+        sibling = os.path.join(os.path.dirname(self.tmpdir), "other-volume")
+        os.makedirs(os.path.join(sibling, "TeslaCam"), exist_ok=True)
+        self.addCleanup(shutil.rmtree, sibling, True)
+
+        self.assertNoCode(uc.check_drive(self.tmpdir), "TESLACAM_PRESENT")
 
     def test_update_like_files_are_a_warning_not_an_error(self):
         drive = self.drive()
