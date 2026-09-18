@@ -401,6 +401,114 @@ class HardwareTests(unittest.TestCase):
             self.assertEqual(findings, [], key)
 
 
+class CybertruckMappingTests(unittest.TestCase):
+    """Issue 95: the Cybertruck mapping table in README.md.
+
+    The Cybertruck images label lights by name rather than by the numbers the
+    other vehicles use, so the identifier table has no column for it and an
+    owner reasonably concludes there is no mapping. The table that fills that
+    gap has to agree with the profile the tools use.
+    """
+
+    BEHAVIOUR = {
+        "Ramping": vp.RAMPING,
+        "Boolean": vp.BOOLEAN,
+        "Full Brightness Control": vp.FULL,
+        "Not fitted": vp.ABSENT,
+    }
+
+    # The row label in the README against a channel that stands for it.
+    ROWS = {
+        "Outer Main Beam": 1,
+        "Inner Main Beam": 3,
+        "Signature": 5,
+        "Channels 4-6": 7,
+        "Front Turn": 13,
+        "Front Fog": 15,
+        "Aux Park": 17,
+        "Side Marker": 19,
+        "Side Repeater": 21,
+        "Rear Turn": 23,
+        "Brake Lights": 25,
+        "Tail": 26,
+        "Reverse Lights": 28,
+        "Rear Fog Lights": 29,
+        "License Plate": 30,
+    }
+
+    def table(self):
+        with open(os.path.join(REPO_ROOT, "README.md"),
+                  encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+        start = next(i for i, line in enumerate(lines)
+                     if line.startswith("| xLights channel |"))
+        rows = {}
+        for line in lines[start + 2:]:
+            if not line.startswith("|"):
+                break
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            rows[cells[0]] = (cells[1], cells[2])
+        return rows
+
+    def test_every_row_matches_the_cybertruck_profile(self):
+        profile = vp.VEHICLES["cybertruck"]
+        rows = self.table()
+        for label, channel in self.ROWS.items():
+            self.assertIn(label, rows, label)
+            behaviour = rows[label][1]
+            self.assertIn(behaviour, self.BEHAVIOUR, behaviour)
+            self.assertEqual(vp.kind_of(profile, channel),
+                             self.BEHAVIOUR[behaviour], label)
+
+    def test_the_remapped_rows_say_so(self):
+        # README.md, "Cybertruck Light Remapping".
+        rows = self.table()
+        for label in ("Aux Park", "Side Repeater", "Tail", "Reverse Lights",
+                      "Liftgate"):
+            self.assertIn("remapped", rows[label][0], label)
+
+    def test_the_channels_a_cybertruck_does_not_have_are_marked(self):
+        rows = self.table()
+        for label in ("Signature", "Channels 4-6"):
+            self.assertEqual(rows[label][1], "Not fitted", label)
+
+    def test_rear_turn_is_flagged_as_documented_two_ways(self):
+        """The contradiction is recorded rather than silently resolved.
+
+        "Cybertruck Light Remapping" says the rear turn signals are disabled;
+        the brightness table lists them as Full Brightness Control. The tools
+        follow the brightness table, and the README says so.
+        """
+        with open(os.path.join(REPO_ROOT, "README.md"),
+                  encoding="utf-8") as handle:
+            readme = handle.read()
+
+        self.assertIn("Rear Turn is documented two ways", readme)
+        self.assertEqual(vp.kind_of(vp.VEHICLES["cybertruck"], 23), vp.FULL)
+
+    def test_the_mapping_covers_every_light_channel(self):
+        """Nothing a Cybertruck owner might look up is missing from it.
+
+        Matched by name rather than by channel number: the left/right pairing
+        is not a fixed parity -- Left Tail is 26 and Right Tail is 27, while
+        Left Outer Main Beam is 1 and Right is 2.
+        """
+        rows = self.table()
+        for channel in sorted(vp.CHANNELS):
+            name, kind = vp.CHANNELS[channel]
+            if kind != vp.LIGHT:
+                continue
+            base = name
+            for side in ("Left ", "Right "):
+                if base.startswith(side):
+                    base = base[len(side):]
+            if base.startswith("Channel "):
+                base = "Channels 4-6"
+            self.assertIn(
+                base, rows,
+                "{} ({}) is not in the Cybertruck table".format(name, channel))
+
+
 class ChannelBlockTests(unittest.TestCase):
     """The Cybertruck-only channels between the lights and the interior."""
 

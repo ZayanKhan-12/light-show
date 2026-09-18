@@ -125,6 +125,45 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### The answer can already be in the repository and still be unfindable
+
+[#95](https://github.com/teslamotors/light-show/issues/95) collects several
+Cybertruck asks. One of them:
+
+> Please provide a light mapping for the Cybertruck similar to the Model S
+
+`images/cybertruck_front.png` and `cybertruck_rear.png` were committed on
+2024-02-10. The request is from 2024-06-13. **The mapping had been there for
+four months.**
+
+The reason nobody found it is structural. "Light Channel Locations" leads with
+a table of identifiers whose columns are "Model S/X" and "Model 3/Y", and the
+Cybertruck images label their lights by name instead of by number, so there is
+no Cybertruck column and no way for one to exist. A Cybertruck owner reads the
+table, sees no row for their truck, and stops.
+
+The fix is a different table for the vehicle whose images work differently:
+what each xLights channel drives on a Cybertruck, including the six remaps
+where a channel drives something other than its name. A test asserts every row
+agrees with the Cybertruck profile in `vehicle_preview.py`, and that every
+light channel appears, so it cannot drift or go stale.
+
+Two things that fell out of writing it:
+
+- **The README contradicts itself about Rear Turn.** "Cybertruck Light
+  Remapping" says the L/R Rear Turn Signals "have been disabled"; the
+  brightness table lists Rear Turn as Full Brightness Control on Cybertruck.
+  The tools follow the brightness table and the README now records the
+  disagreement rather than resolving it quietly, which is the standing rule
+  when the documentation disagrees with itself.
+- **Left/right pairing is not a fixed parity.** Left Outer Main Beam is 1 and
+  Right is 2, but Left Tail is 26 and Right Tail is 27. A test that assumed
+  the parity failed; matching on the channel name is the way to walk pairs.
+
+The rest of that issue is not implementable here. There is no tonneau cover
+channel and no RGBW capability, so both are vehicle requests for Tesla, and
+saying so plainly is the whole of the answer.
+
 ### Two guarantees with a gap between them
 
 [#89](https://github.com/teslamotors/light-show/issues/89) reports an inner

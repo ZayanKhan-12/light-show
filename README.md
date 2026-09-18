@@ -15,6 +15,8 @@ Custom shows are shared by the community. These sites host shows to download:
 - [XLightShows](https://xlightshows.io/)
 <!-- /community-shows -->
 
+A show is not model-specific: any show here plays on any [supported vehicle](#supported-vehicles). How much of it you see does vary, because a show written around the [Cybertruck light bars](#cybertruck_mapping) has most of itself on lights no other vehicle has, and a show written for a Model S uses channels a Cybertruck does not have. [vehicle_preview.py](#vehicle_preview) prints the share for any show and vehicle.
+
 The list is alphabetical and is not a ranking. These sites are run by the community: Tesla does not operate, review or endorse them, and what each one offers is between you and the site. To have a site added, open a [pull request](https://github.com/teslamotors/light-show/pulls) adding it to the list above.
 
 A downloaded show is a binary file from a stranger. Check one before you use it:
@@ -640,7 +642,31 @@ The following tables and images help show which channels are controlled on each 
 ### Model X
 <img src="/images/x_headlights.png?raw=true" width="900"/><br>
 
-### Cybertruck
+### <a name="cybertruck_mapping"></a>Cybertruck
+The images below label the lights by name rather than by the numbers used for the other vehicles, so the table above does not have a Cybertruck column. This one says what each xLights channel drives on a Cybertruck instead. Several of them drive something other than their name - those are the [remaps](#cybertruck-light-remapping).
+
+| xLights channel | What it drives on a Cybertruck | Behaviour |
+| --- | --- | --- |
+| Outer Main Beam | High beam | Ramping |
+| Inner Main Beam | Low beam | Ramping |
+| Signature | - | Not fitted |
+| Channels 4-6 | - | Not fitted |
+| Front Turn | Front turn indicator | Ramping |
+| Front Fog | Front fog | Boolean |
+| Aux Park | Frunk light (remapped) | Boolean |
+| Side Marker | Front side marker | Ramping |
+| Side Repeater | Rear side marker (remapped) | Boolean |
+| Rear Turn | See the note below | Full Brightness Control |
+| Brake Lights | Brake lights | Full Brightness Control |
+| Tail | Reverse lights (remapped) | Boolean |
+| Reverse Lights | Bed lights (remapped) | Boolean |
+| Rear Fog Lights | Rear fog | Boolean |
+| License Plate | License plate | Boolean |
+| Liftgate | Powered frunk (remapped) | Closure |
+
+The light bars are separate from all of the above: the [front bar](#cybertruck-light-bar) is 60 individually controllable LEDs, the rear is 52, and the [offroad bar](#cybertruck-offroad-light-bar) is six segments. So is the [interior RGB](#interior_rgb). None of them exist on any other vehicle, which is why a show built around them looks sparse elsewhere - see [when the show seems not to start](#show_looks_dead).
+
+> **Rear Turn is documented two ways.** [Cybertruck Light Remapping](#cybertruck-light-remapping) says the L/R Rear Turn Signals "have been disabled", while the [brightness table](#ramping_lights) lists Rear Turn as Full Brightness Control on Cybertruck. The tools follow the brightness table. This is worth confirming with Tesla rather than assuming either one.
 
 <img src="/images/cybertruck_front.png?raw=true" width="900"/><br>
 <img src="/images/cybertruck_rear.png?raw=true" width="900"/><br>
