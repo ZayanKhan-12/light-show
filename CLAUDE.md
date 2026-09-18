@@ -120,6 +120,36 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### The vehicle's error messages are the repository's problem
+
+[#65](https://github.com/teslamotors/light-show/issues/65) is four owners over
+a year hitting "Incorrect number of channels" with nothing to tell them what
+it meant. `validator.py` already rejected those files — it just said
+"Expected 48 or 200 channels, got 1000", which names the symptom the car
+already gave them.
+
+The cause is knowable from the show folders, and `describe_channel_count()`
+now says it: a sequence's channel count comes from the folder it was built in.
+`tesla_xlights_show_folder` defines one 200-channel controller.
+`tesla_xlights_cross_vehicle_folder` defines five, so a sequence exported
+straight out of it is 1000 channels — the cross-vehicle export step was
+skipped. Any other number means a different show directory entirely.
+
+- **Tie a message to the data it describes.**
+  `test_the_cross_vehicle_folder_exports_five_cars` reads
+  `xlights_networks.xml` out of the shipped zip and asserts the total is what
+  the message claims. If Tesla ships a six-car folder, that test fails rather
+  than the message quietly becoming wrong.
+- **Name the car's own wording.** `VEHICLE_ERROR` is in every channel-count
+  message so that searching the phrase from the screen reaches the
+  explanation. `README.md` has a table of the messages owners have reported;
+  add to it when a new one is reported, and do not invent entries for errors
+  nobody has seen.
+- **`validator.py` has tests now** (`tests/test_validator.py`). It is the tool
+  the README points at and the one packaged as an .exe, so it had the most
+  users and the least coverage. Keep it standard library, 3.7+, and leave the
+  blocking `input()` in `__main__` alone.
+
 ### A show is channels, not pixels
 
 [#64](https://github.com/teslamotors/light-show/issues/64) asks whether the

@@ -84,7 +84,21 @@ Playing a custom show is a vehicle capability. It cannot be enabled by the show 
 ### Debug
 - If the popup title is "Light Show" instead of "Custom Light Show", then the requirements are not being met for the USB flash drive formatting and/or required folder and files. [usb_check.py](#usb_check) reports which requirement a drive is missing.
 - If Toybox has no Light Show entry at all, check the vehicle and software version against [Supported Vehicles](#supported-vehicles) before looking at the drive.
-- Error messages will be provided if the required files exist but there is a problem with the light show sequence file.
+- Error messages will be provided if the required files exist but there is a problem with the light show sequence file. The ones owners have reported are listed below.
+
+### <a name="vehicle_errors"></a>Error messages from the vehicle
+Run [validator.py](#light-show-sequence-validator-script) on a show before taking it to the car; it checks the same things and explains what it finds.
+
+| Message on the screen | What it means |
+| --- | --- |
+| ```Incorrect number of channels``` | The .fseq has a channel count other than 48 or 200. A count that is a multiple of 200 - 1000 is the usual one - is a [cross-vehicle sequence](#cross_vehicle) exported as a single file instead of once per car. Any other number means the sequence was built in a different xLights show directory. `validator.py` names which of the two it is. |
+
+Two things that are **not** causes, although both come up:
+
+- **The number of commands in a show.** That limit was [removed](#show_limits). A show is no longer rejected for being too large.
+- **A show that plays on one car but not another.** The .fseq is not model-specific; a show that plays on one supported vehicle will load on any of them. If the vehicle differs, check it against [Supported Vehicles](#supported-vehicles) instead.
+
+Audio that will not play or drifts out of sync is a separate problem: the file has to be [44.1 kHz](#audio-file-requirements), which [usb_check.py](#usb_check) checks along with the rest of the drive.
 
 ## <a name="show_limits"></a>General Limitations of Custom Shows
 - The maximum duration for a custom Tesla xLights show is 4 hours.

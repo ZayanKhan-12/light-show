@@ -53,6 +53,38 @@ jobs:
           sys.exit('validator accepted a malformed file')
           "
 
+      - name: Check the channel-count message still explains itself
+        # Issue #65: the vehicle only says "Incorrect number of channels".
+        # The message here has to name the cause, and stay tied to the show
+        # folder it describes.
+        run: |
+          python3 -c "
+          import struct, xml.etree.ElementTree as ET, zipfile, io, sys
+          import validator
+
+          with zipfile.ZipFile('xlights/tesla_xlights_cross_vehicle_folder.zip') as z:
+              root = ET.fromstring(z.read('tesla_xlights_cross_vehicle_folder/xlights_networks.xml'))
+          total = sum(int(n.get('MaxChannels', 0))
+                      for c in root.findall('Controller')
+                      for n in c.findall('network'))
+
+          header = bytearray(32)
+          header[0:4] = b'PSEQ'
+          struct.pack_into('<H', header, 4, 32)
+          header[7] = 2
+          struct.pack_into('<IIB', header, 10, total, 10, 20)
+          try:
+              validator.validate(io.BytesIO(bytes(header) + bytes(total * 10)))
+          except validator.ValidationError as error:
+              message = str(error)
+          else:
+              sys.exit('validator accepted a %d-channel file' % total)
+
+          assert validator.VEHICLE_ERROR in message, message
+          assert 'cross-vehicle' in message, message
+          print('a %d-channel export is explained as %d cars' % (total, total // 200))
+          "
+
   example-shows:
     name: Analyse the shipped example shows
     runs-on: ubuntu-latest
