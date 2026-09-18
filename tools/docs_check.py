@@ -90,6 +90,22 @@ def heading_slug(heading: str) -> str:
     return re.sub(r'\s+', "-", slug.strip())
 
 
+# GitHub issue forms are YAML rather than markdown, so nothing above walks
+# them -- but they are mostly commands, and a renamed tool would leave them
+# telling people to run something that does not exist.
+ISSUE_TEMPLATE_DIR = os.path.join(".github", "ISSUE_TEMPLATE")
+
+
+def issue_template_files(root: str = REPO_ROOT) -> List[str]:
+    """Every issue form, as paths relative to the repository root."""
+    folder = os.path.join(root, ISSUE_TEMPLATE_DIR)
+    if not os.path.isdir(folder):
+        return []
+    return sorted(os.path.join(ISSUE_TEMPLATE_DIR, name)
+                  for name in os.listdir(folder)
+                  if name.endswith((".yml", ".yaml")))
+
+
 def markdown_files(root: str = REPO_ROOT) -> List[str]:
     """Every tracked .md file, as paths relative to the repository root."""
     out: List[str] = []
@@ -355,6 +371,10 @@ def check_all(root: str = REPO_ROOT) -> List[Finding]:
         findings.extend(check_file(relative_path, root))
         findings.extend(check_commands(relative_path, root))
         findings.extend(check_community_list(relative_path, root))
+    # The issue forms only get the command check: they have no prose links,
+    # and their anchors are GitHub's rather than ours.
+    for relative_path in issue_template_files(root):
+        findings.extend(check_commands(relative_path, root))
     findings.extend(check_unreferenced_images(root))
     findings.sort(key=lambda f: (_SEVERITY_ORDER[f.severity], f.file,
                                  f.line or 0))
@@ -365,6 +385,10 @@ def render(findings: Sequence[Finding], checked: Sequence[str],
            verbose: bool) -> str:
     out: List[str] = ["Checked {} document(s): {}".format(
         len(checked), ", ".join(checked)), ""]
+    forms = issue_template_files()
+    if forms:
+        out.insert(1, "Checked {} issue form(s) for the commands they "
+                      "name.".format(len(forms)))
     shown = [f for f in findings if verbose or f.severity != INFO]
     for finding in shown:
         location = finding.file

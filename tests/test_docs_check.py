@@ -318,66 +318,109 @@ class CommandTests(DocsCheckTestCase):
             self.assertEqual(dc.check_commands(name), [], name)
 
 
-class IssueTemplateTests(unittest.TestCase):
-    """Issue 110 arrived with a title and nothing else."""
+class IssueFormTests(unittest.TestCase):
+    """Issues 110 and 115 both arrived with a title and nothing else.
+
+    Markdown templates are a suggestion: the body can be deleted. Issue forms
+    with required fields cannot be submitted empty, which is why these are
+    YAML now.
+    """
 
     TEMPLATE_DIR = os.path.join(REPO_ROOT, ".github", "ISSUE_TEMPLATE")
 
-    def templates(self):
+    def forms(self):
         return sorted(name for name in os.listdir(self.TEMPLATE_DIR)
-                      if name.endswith(".md"))
+                      if name.endswith(".yml") and name != "config.yml")
 
-    def front_matter(self, name):
+    def text(self, name):
         with open(os.path.join(self.TEMPLATE_DIR, name),
                   encoding="utf-8") as handle:
-            lines = handle.read().splitlines()
-        self.assertEqual(lines[0], "---", name)
-        end = lines.index("---", 1)
-        fields = {}
-        for line in lines[1:end]:
-            key, _, value = line.partition(":")
-            fields[key.strip()] = value.strip()
-        return fields
+            return handle.read()
 
-    def test_there_is_a_template_for_each_kind_of_report(self):
-        self.assertEqual(self.templates(),
-                         ["01-repository.md", "02-vehicle.md"])
+    def fields(self, name):
+        """The (id, required) pairs in a form.
 
-    def test_every_template_has_a_name_and_a_description(self):
-        for name in self.templates():
-            fields = self.front_matter(name)
-            self.assertTrue(fields.get("name"), name)
-            self.assertTrue(fields.get("about"), name)
+        A shape check on files this repository controls, not a YAML parser:
+        every field is written as "- type:" with its id two lines of
+        indentation in.
+        """
+        found = []
+        current = None
+        for line in self.text(name).splitlines():
+            stripped = line.strip()
+            if stripped.startswith("- type:"):
+                current = {"type": stripped.split(":", 1)[1].strip(),
+                           "id": None, "required": False}
+                found.append(current)
+            elif current is not None and stripped.startswith("id:"):
+                current["id"] = stripped.split(":", 1)[1].strip()
+            elif current is not None and stripped == "required: true":
+                current["required"] = True
+        return found
 
-    def test_every_template_asks_for_the_checker_output(self):
-        """The thing that makes a report actionable."""
-        for name in self.templates():
-            with open(os.path.join(self.TEMPLATE_DIR, name),
-                      encoding="utf-8") as handle:
-                self.assertIn("tools/diagnose.py", handle.read(), name)
+    def test_there_is_a_form_for_each_kind_of_report(self):
+        self.assertEqual(self.forms(),
+                         ["01-repository.yml", "02-vehicle.yml"])
 
-    def test_the_vehicle_template_asks_for_the_software_version(self):
-        with open(os.path.join(self.TEMPLATE_DIR, "02-vehicle.md"),
-                  encoding="utf-8") as handle:
-            text = handle.read()
-        self.assertIn("software version", text)
-        self.assertIn("Tesla service", text)
+    def test_every_form_declares_a_name_and_description(self):
+        for name in self.forms():
+            text = self.text(name)
+            self.assertRegex(text, r"(?m)^name: \S", name)
+            self.assertRegex(text, r"(?m)^description: \S", name)
+            self.assertRegex(text, r"(?m)^body:", name)
+
+    def test_every_form_has_at_least_one_required_field(self):
+        """The whole point: an empty submission is refused."""
+        for name in self.forms():
+            required = [f for f in self.fields(name) if f["required"]]
+            self.assertTrue(required, name)
+
+    def test_every_input_field_has_an_id(self):
+        for name in self.forms():
+            for field in self.fields(name):
+                if field["type"] == "markdown":
+                    continue
+                self.assertTrue(field["id"], "{}: {}".format(name, field))
+
+    def test_field_ids_are_unique_within_a_form(self):
+        for name in self.forms():
+            ids = [f["id"] for f in self.fields(name) if f["id"]]
+            self.assertEqual(len(ids), len(set(ids)), name)
+
+    def test_every_form_asks_for_the_checker_output(self):
+        for name in self.forms():
+            self.assertIn("tools/diagnose.py", self.text(name), name)
+
+    def test_the_vehicle_form_requires_the_vehicle_and_software_version(self):
+        required = {f["id"] for f in self.fields("02-vehicle.yml")
+                    if f["required"]}
+        self.assertIn("vehicle", required)
+        self.assertIn("software", required)
+        self.assertIn("Tesla service", self.text("02-vehicle.yml"))
 
     def test_the_chooser_sends_the_three_common_cases_elsewhere(self):
-        with open(os.path.join(self.TEMPLATE_DIR, "config.yml"),
-                  encoding="utf-8") as handle:
-            config = handle.read()
+        config = self.text("config.yml")
 
         self.assertIn("smeighan/xLights/issues", config)
         self.assertIn("CONTRIBUTING.md", config)
         self.assertIn("download_a_show", config)
 
-    def test_the_chooser_still_allows_a_blank_issue(self):
-        # Turning them off would push people who do not fit a template into
-        # picking the wrong one.
-        with open(os.path.join(self.TEMPLATE_DIR, "config.yml"),
-                  encoding="utf-8") as handle:
-            self.assertIn("blank_issues_enabled: true", handle.read())
+    def test_blank_issues_are_off_now_that_two_have_arrived_empty(self):
+        """Reversed after issue 115.
+
+        #110 kept them on so that anyone who did not fit a template was not
+        pushed into the wrong one. #115 arrived empty the same way, and the
+        contact links cover the cases the forms do not, so the balance
+        changed.
+        """
+        self.assertIn("blank_issues_enabled: false", self.text("config.yml"))
+
+    def test_the_forms_are_checked_for_the_commands_they_name(self):
+        forms = dc.issue_template_files()
+
+        self.assertTrue(forms)
+        for form in forms:
+            self.assertEqual(dc.check_commands(form), [], form)
 
 
 class DownloadRouteTests(unittest.TestCase):

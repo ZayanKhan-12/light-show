@@ -1,0 +1,52 @@
+name: Something the car does
+description: A show that will not play, plays wrongly, or stops part way
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        This tracker cannot reach the people who own the vehicle software, so
+        please report it through Tesla service as well. It is still worth
+        writing down here so other owners can find it.
+  - type: input
+    id: vehicle
+    attributes:
+      label: Vehicle
+      description: Model and year, e.g. 2022 Model Y.
+    validations:
+      required: true
+  - type: input
+    id: software
+    attributes:
+      label: Software version
+      description: From Controls > Software on the touchscreen.
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what the screen said, and what the car did.
+    validations:
+      required: true
+  - type: textarea
+    id: checker-output
+    attributes:
+      label: What the checks say
+      description: >-
+        python3 tools/diagnose.py /Volumes/YOURDRIVE rules out the drive, the
+        file and the show before the car is blamed. If it ends by saying
+        everything it checked is sound, paste that.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: probe
+    attributes:
+      label: If a light behaved differently from the documentation
+      description: >-
+        python3 tools/channel_probe.py probe --group headlights builds a show
+        that lights one channel at a time with a tone at each change. Include
+        the schedule it printed and what you saw.
+      render: text
+    validations:
+      required: false
