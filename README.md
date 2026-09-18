@@ -707,7 +707,27 @@ The following tables and images help show which channels are controlled on each 
 <img src="/images/s_headlights_projector.png?raw=true" width="900"/><br>
 
 ### Model X
+The identifiers above apply, but unlike Model S and Model 3/Y there is one image here rather than a reflector and a projector version. The [brightness table](#ramping_lights) still distinguishes the two: the Outer Main Beam ramps on LED reflector headlights and is boolean on LED projector headlights, on Model X as on the others ([#113](https://github.com/teslamotors/light-show/issues/113)).
+
 <img src="/images/x_headlights.png?raw=true" width="900"/><br>
+
+### <a name="highland"></a>Model 3 "Highland"
+The refreshed Model 3 is not pictured above, and what follows is owner observation rather than a Tesla mapping ([#113](https://github.com/teslamotors/light-show/issues/113)). One owner reports, against the current show folder:
+
+- The Inner and Outer Main Beam channels appear to be **the other way round**. A second owner reports the same swap on a 2023 Model 3 ([#72](https://github.com/teslamotors/light-show/issues/72)), so this is two accounts on two different builds rather than one.
+- **Signature does nothing.**
+- The light band below the main beams responds to **Channels 4-6, with the fade controlled by Channel 4** - which is what [Ramping Channels 4-6](#ramping_channels_4_6) already describes, so the documented behaviour holds there.
+- That band is **not segmented**: the three channels drive it as one.
+- Rear fog and reverse lights are in the bumper, and the bumper turn signals follow the rear turn channels.
+
+None of this is confirmed, and no channel assignment has been changed on the strength of it: the mapping from a light to its channel is what every .fseq already exported depends on. If you have a Highland, fifteen seconds with [channel_probe.py](#channel_probe) turns these into evidence:
+
+```
+python3 tools/channel_probe.py probe --group headlights
+```
+
+That lights the four beam channels one at a time with a tone at each change, so a phone video shows which lamp each one drives on your car. Please say what you see on the issue.
+
 
 ### <a name="cybertruck_mapping"></a>Cybertruck
 The images below label the lights by name rather than by the numbers used for the other vehicles, so the table above does not have a Cybertruck column. This one says what each xLights channel drives on a Cybertruck instead. Several of them drive something other than their name - those are the [remaps](#cybertruck-light-remapping).

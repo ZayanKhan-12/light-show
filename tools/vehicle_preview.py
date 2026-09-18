@@ -461,6 +461,12 @@ _MODEL_3 = VehicleProfile(
         "On Model 3 built before October 2020 the left tail, right tail and "
         "license plate lights operate together, and the License Plate channel "
         "has no effect at all.",
+        "Owners report that on the refreshed Model 3 (\"Highland\") the Inner "
+        "and Outer Main Beam channels are the other way round and Signature "
+        "does nothing, and a Model 3 owner reports the same beam swap on a "
+        "2023 car. Two accounts on two builds, neither confirmed and neither "
+        "modelled here; see issues #113 and #72, and "
+        "tools/channel_probe.py --group headlights to check your own car.",
     ),
     variants=(_MODEL_3_PRE_OCT_2020,),
 )
