@@ -179,6 +179,31 @@ or
 
 11. For more information on the workflow of creating xLights sequences, please use existing online resources. The rest of these instructions contain Tesla-specific information for show creators.
 
+## <a name="timing_tracks"></a>Working with timing tracks
+A timing track is the row of marks along the top of the timeline that divides the sequence into cells, usually on the beat. Nothing forces you to add one, but a lot of xLights works off it: the marks are what effects snap to, what "Divide Timings" splits, and what **Paste By Cell** pastes into. Add one from the xLights Timing menu before you start placing effects, and put marks on it.
+
+A sequence with no marks has no cells, which is worth knowing because of the message it produces:
+
+### Error messages in xLights
+These come from xLights rather than from the vehicle. xLights bugs belong in the [xLights issue tracker](https://github.com/smeighan/xLights/issues); what is listed here is the ones that are really about how a Tesla sequence is set up.
+
+| Message on the screen | What it means |
+| --- | --- |
+| ```Graphics Driver Problem: Paste By Cell information missing. You can only Paste By Time with this data.``` | Nothing to do with the graphics driver, despite the title. Pasting by cell needs the cells that a [timing track's](#timing_tracks) marks create, and this sequence has none. Either switch to Paste By Time in the toolbar, or add a timing track with marks on it. |
+| ```Sequence Element Mismatch``` | The sequence refers to a model the current show folder does not have. It is [expected on a few older shows](#converting-old-show-files) that programmed the rear light bar pixel by pixel; choose "Delete this element from the sequence" to carry on. |
+
+To check a sequence before exporting it, run [sequence_check.py](#sequence_check).
+
+## <a name="sequence_check"></a>Sequence Check Script
+`tools/sequence_check.py` reads a saved .xsq and reports what would get in the way later:
+
+```
+python3 tools/sequence_check.py lightshow.xsq
+python3 tools/sequence_check.py lightshow.xsq -v      # list the timing tracks
+```
+
+It reports a sequence with no timing marks, a frame interval outside the supported 15-100 ms, a sequence longer than the 4 hour limit, and a musical sequence with no audio attached. It reads the .xsq you edit; the .fseq the car plays is checked with [validator.py](#light-show-sequence-validator-script).
+
 ### <a name="layer_view"></a>Grouping channels by position: "Layer View"
 "Group View" is organized by *light type* — one row for both front turn signals,
 one row for both mirrors, and so on. That is the right layout when you want the
