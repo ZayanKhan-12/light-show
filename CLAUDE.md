@@ -126,6 +126,36 @@ than silently picking one. Where the README is simply silent — it describes th
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
 
+### Check the artifact before blaming the browser
+
+[#101](https://github.com/teslamotors/light-show/issues/101) is "why cant i
+download the tesla xlights folder", with a screenshot, and a second owner
+saying they have the same problem. There is no way to reproduce someone
+else's browser, proxy or antivirus from here.
+
+What is checkable is whether the thing being downloaded is sound, and it is:
+there is no `.gitattributes`, so nothing is behind Git LFS and a web download
+gets the real bytes, and both archives open with their full contents. A test
+now asserts that, because the repository-side version of this failure —
+a corrupted commit, or a zip replaced by an LFS pointer — is real and would
+produce exactly this report.
+
+The part worth building was the failure between the two: **a download that
+stops part way leaves a file of the right name that will not open.** Pointed
+at a `.zip`, `show_folder_check.py` now tells that apart from an archive you
+simply have not extracted yet, and says which. It checks the archive only,
+not every entry: reading 41 MB to confirm a truncation would take longer than
+downloading the file again.
+
+The README also listed exactly one way to get the folder, a `?raw=true` link.
+If that route fails for someone they had nothing else to try, so the other
+three — the file's page, `git clone`, the repository ZIP — are written down
+now.
+
+When a report cannot be reproduced, the useful move is to verify what you
+control, say plainly that you have, and give the reporter a way to tell which
+side the problem is on.
+
 ### Ruling a layer out is an answer
 
 [#98](https://github.com/teslamotors/light-show/issues/98) is a good bug

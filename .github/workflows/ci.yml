@@ -253,6 +253,25 @@ jobs:
           print("{} show(s) can reach the cabin, {} drive it.".format(reached, lit))
           PYEOF
 
+      - name: Check the shipped archives are downloadable as committed
+        # Issue #101: the repository-side version of "it will not download"
+        # is a corrupt archive or an LFS pointer in place of the file.
+        run: |
+          set -euo pipefail
+          test ! -f .gitattributes || ! grep -q "filter=lfs" .gitattributes
+          python3 - <<'PYEOF'
+          import glob, sys
+          sys.path.insert(0, "tools")
+          import show_folder_check as sf
+          archives = sorted(glob.glob("xlights/*.zip") + glob.glob("examples/*.zip"))
+          assert archives, "no archives found"
+          for path in archives:
+              problem = sf._zip_problem(path)
+              assert problem is None, (path, problem)
+              print("%-62s readable" % path[-62:])
+          print("%d archive(s) are intact." % len(archives))
+          PYEOF
+
       - name: Diagnose a drive end to end
         # Issue #98: the entry point has to run and reach a conclusion on
         # every kind of input, since it is what a confused owner is told to

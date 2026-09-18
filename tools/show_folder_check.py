@@ -31,6 +31,7 @@ import json
 import os
 import sys
 import xml.etree.ElementTree as ET
+import zipfile
 from typing import Dict, List, Optional, Sequence, Tuple
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -140,6 +141,24 @@ def _entries(path: str) -> List[str]:
         raise ShowFolderError("Cannot read {}: {}".format(path, error))
 
 
+def _zip_problem(path: str) -> Optional[str]:
+    """Why this .zip cannot be read, or None when it is fine.
+
+    Only the archive is checked, not its contents: a truncated download is
+    the failure this is for, and reading every entry of a 41 MB archive to
+    say so would be slower than downloading it again.
+    """
+    try:
+        with zipfile.ZipFile(path) as bundle:
+            if not bundle.namelist():
+                return "The archive is empty."
+    except zipfile.BadZipFile as error:
+        return "It is not a readable zip archive ({}).".format(error)
+    except OSError as error:
+        return str(error)
+    return None
+
+
 def looks_like_show_folder(path: str) -> bool:
     return os.path.isfile(os.path.join(path, RGBEFFECTS))
 
@@ -150,11 +169,27 @@ def locate_show_folder(path: str) -> Tuple[Optional[str], List[Finding]]:
 
     if os.path.isfile(path):
         if path.lower().endswith(".zip"):
+            # A download that stopped part way is a file of the right name
+            # and the wrong length, which is worth telling apart from simply
+            # not having unzipped it yet.
+            # https://github.com/teslamotors/light-show/issues/101
+            broken = _zip_problem(path)
+            if broken:
+                findings.append(Finding(
+                    ERROR, "download-incomplete",
+                    "That .zip cannot be opened.",
+                    "{} The usual cause is a download that stopped part way. "
+                    "Download it again, and compare the size with the one "
+                    "GitHub shows on the file's page before "
+                    "unzipping.".format(broken),
+                    readme="Getting started with the Tesla xLights project "
+                           "directory"))
+                return None, findings
             findings.append(Finding(
                 ERROR, "not-extracted",
                 "That is the .zip, not a folder.",
-                "xLights needs the unzipped project directory. Extract "
-                "{} first, then select the folder it "
+                "The archive is intact. xLights needs the unzipped project "
+                "directory, so extract {} first, then select the folder it "
                 "produces.".format(os.path.basename(path)),
                 readme="Getting started with the Tesla xLights project "
                        "directory"))
