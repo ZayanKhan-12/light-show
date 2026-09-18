@@ -609,6 +609,8 @@ To command a closure to move in a particular manner, place an effect with the fo
 | Windows | 4 |
 | Mirrors, Door Handles, Charge Port | 2 |
 
+These are approximate and owners have reported different times on particular builds. If the timing matters to your show, measure it on the car with [channel_probe.py](#channel_probe) rather than relying on the table.
+
 ## Tips for platform-agnostic light shows
 ### Light channel mapping recommendations
 - The [vehicle preview script](#vehicle_preview) reports where a finished show will differ from the xLights preview on each vehicle, which covers most of the cases below automatically.
@@ -624,6 +626,31 @@ To command a closure to move in a particular manner, place an effect with the fo
         <img src="/images/ord_channel_ok.png?raw=true" width="900" />
 
 ### <a name="light_channel_mapping_details"></a>Light channel mapping details
+#### <a name="channel_probe"></a>Checking what a channel drives on your car
+The tables above are the mapping the show folder uses. If a channel appears to drive a different light on your vehicle, the way to find out is to light the channels one at a time and watch:
+
+```
+python3 tools/channel_probe.py probe --group headlights
+```
+
+That writes `probe.fseq` and `probe.wav` and prints the order it used:
+
+```
+   1. 0:01.000 - 0:04.000   channel   1  Left Outer Main Beam
+   2. 0:05.000 - 0:08.000   channel   2  Right Outer Main Beam
+   3. 0:09.000 - 0:12.000   channel   3  Left Inner Main Beam
+   4. 0:13.000 - 0:16.000   channel   4  Right Inner Main Beam
+```
+
+Copy both files into a `LightShow` folder, play the show and film the car; a tone sounds as each channel comes on, so the video lines up with the schedule. `--group lights` walks every light channel, `--channels 1-6` takes an explicit list, and `--include-closures` adds closures - which are left out by default because each one costs an [actuation](#closures) and is left open at the end.
+
+The same probe times a closure: open the liftgate and the video shows how long it takes on that car.
+
+#### Reporting a channel mapping difference
+If the probe shows a channel driving something other than its name, please [open an issue](https://github.com/teslamotors/light-show/issues) with the vehicle, its build date and factory, the headlamp type if it is a front light, and the probe schedule next to what you saw.
+
+A confirmed difference is **documented for that vehicle**, not corrected by changing the channel. The mapping from a light to its channel is what every .fseq already exported depends on, so moving one would break existing shows on every car. That is why differences are recorded as notes instead - see [Cybertruck Light Remapping](#cybertruck-light-remapping) and [Tail lights and License Plate Lights](#tail-lights-and-license-plate-lights) for the ones documented so far.
+
 #### Side Markers and Aux Park
 - Side markers are only installed in North America vehicles
 - Aux park are not installed in Model 3 Standard Range +
