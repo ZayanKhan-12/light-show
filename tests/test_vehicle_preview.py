@@ -1108,6 +1108,136 @@ class ClosureDanceTests(unittest.TestCase):
                               "closure-dance-thermal"), [])
 
 
+class ModelXPinchTests(unittest.TestCase):
+    """Issue 77: the one documented way a show stops instead of misbehaving.
+
+    README.md, "Other notes": moving windows during Model X door movement can
+    cause false pinch detections, stopping the light show.
+    """
+
+    LEFT_FALCON, RIGHT_FALCON = 31, 32
+    LEFT_FRONT_DOOR = 33
+    WINDOW = 37
+
+    def show_with(self, door_channel, door_cmd, door_frame,
+                  window_frame, frames=3000):
+        return closure_show({
+            door_channel: [(door_frame, 10, door_cmd)],
+            self.WINDOW: [(window_frame, 20, DANCE_CMD)],
+        }, frames=frames, step_time=20)
+
+    def finding(self, show, key="modelx"):
+        return find(vp.analyze(show, vp.VEHICLES[key]),
+                    "window-during-door-movement")
+
+    def test_a_window_moving_during_a_falcon_door_is_a_warning(self):
+        # Falcon doors take about 20 s to open; the window moves at 5 s.
+        show = self.show_with(self.LEFT_FALCON, OPEN_CMD, 0, 250)
+        findings = self.finding(show)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, vp.WARNING)
+        self.assertIn("stop the show", findings[0].detail)
+
+    def test_the_same_show_is_silent_on_vehicles_without_powered_doors(self):
+        show = self.show_with(self.LEFT_FALCON, OPEN_CMD, 0, 250)
+        for key in ("models", "model3", "modely", "cybertruck"):
+            self.assertEqual(self.finding(show, key), [], key)
+
+    def test_a_window_after_the_door_has_finished_is_fine(self):
+        # 25 s later, past the 20 s the falcon door takes.
+        show = self.show_with(self.LEFT_FALCON, OPEN_CMD, 0, 1250)
+        self.assertEqual(self.finding(show), [])
+
+    def test_front_doors_use_their_own_longer_open_time(self):
+        # Front doors take about 22 s; a window at 21 s is still during it.
+        show = self.show_with(self.LEFT_FRONT_DOOR, OPEN_CMD, 0, 1050)
+        self.assertEqual(len(self.finding(show)), 1)
+
+    def test_closing_uses_the_shorter_close_time(self):
+        # Closing a front door takes about 3 s, so a window at 5 s is clear.
+        show = self.show_with(self.LEFT_FRONT_DOOR, CLOSE_CMD, 0, 250)
+        self.assertEqual(self.finding(show), [])
+
+        # ... but at 2 s it is not.
+        soon = self.show_with(self.LEFT_FRONT_DOOR, CLOSE_CMD, 0, 100)
+        self.assertEqual(len(self.finding(soon)), 1)
+
+    def test_a_show_with_no_door_commands_says_nothing(self):
+        show = closure_show({self.WINDOW: [(0, 20, DANCE_CMD)]})
+        self.assertEqual(self.finding(show), [])
+
+    def test_a_show_with_no_window_commands_says_nothing(self):
+        show = closure_show({self.LEFT_FALCON: [(0, 10, OPEN_CMD)]})
+        self.assertEqual(self.finding(show), [])
+
+    def test_every_clash_is_counted(self):
+        show = closure_show({
+            self.LEFT_FALCON: [(0, 10, OPEN_CMD)],
+            37: [(250, 20, DANCE_CMD)],
+            38: [(300, 20, DANCE_CMD)],
+            39: [(350, 20, DANCE_CMD)],
+        }, frames=3000, step_time=20)
+        findings = self.finding(show)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].occurrences, 3)
+
+    def test_the_movement_durations_come_from_the_readme_table(self):
+        # "Closure Movement Durations": open 20 / close 8 for falcon doors,
+        # open 22 / close 3 for front doors.
+        falcon = vp.CLOSURE_FAMILIES[self.LEFT_FALCON]
+        front = vp.CLOSURE_FAMILIES[self.LEFT_FRONT_DOOR]
+
+        self.assertEqual((falcon.open_ms, falcon.close_ms), (20000, 8000))
+        self.assertEqual((front.open_ms, front.close_ms), (22000, 3000))
+
+    def test_only_model_x_carries_pinch_doors(self):
+        self.assertEqual(vp.VEHICLES["modelx"].pinch_doors,
+                         vp.PINCH_DOOR_CHANNELS)
+        for key in ("models", "model3", "modely", "cybertruck"):
+            self.assertEqual(vp.VEHICLES[key].pinch_doors, (), key)
+
+    def test_the_two_older_examples_trip_this_on_a_model_x(self):
+        """Issue 77, reproduced from the repository's own shows.
+
+        The reporter says their Model X halts a few seconds in "even for the
+        one I download from this git repo". Both zipped examples open the
+        powered doors and then move windows while those doors are still
+        opening, which is the documented false-pinch condition. The
+        multi-car examples never touch the doors, so they are unaffected.
+        """
+        tripped = set()
+        for name, show in example_shows():
+            if find(vp.analyze(show, vp.VEHICLES["modelx"]),
+                    "window-during-door-movement"):
+                tripped.add(example_label(name))
+
+        self.assertEqual(tripped,
+                         {"lightshow_example_1", "lightshow_example_2"})
+
+    def test_the_same_examples_are_fine_on_every_other_vehicle(self):
+        for name, show in example_shows():
+            for key in ("models", "model3", "modely", "cybertruck"):
+                self.assertEqual(
+                    find(vp.analyze(show, vp.VEHICLES[key]),
+                         "window-during-door-movement"), [],
+                    "{} on {}".format(name, key))
+
+    def test_the_first_clash_in_example_1_is_measured(self):
+        # Doors are commanded open at 5.48 s and take about 20 s; the first
+        # window moves at 10.94 s, well inside that.
+        for name, show in example_shows():
+            if example_label(name) != "lightshow_example_1":
+                continue
+            findings = find(vp.analyze(show, vp.VEHICLES["modelx"]),
+                            "window-during-door-movement")
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0].first_at_ms, 10940)
+            return
+        self.fail("lightshow_example_1 was not found")
+
+
 class ClosureSpacingTests(unittest.TestCase):
     def test_commands_bunched_together_are_noted(self):
         show = closure_show({CHARGE_PORT: [(0, 2, OPEN_CMD),

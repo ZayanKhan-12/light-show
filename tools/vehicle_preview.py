@@ -249,6 +249,9 @@ class VehicleProfile:
     variants: Tuple[BuildVariant, ...] = ()
     # channel -> what drives the light instead, for SLAVED channels
     slaved: Dict[int, str] = dataclasses.field(default_factory=dict)
+    # Doors whose movement makes a moving window risky; see
+    # PINCH_DOOR_CHANNELS. Empty for every vehicle that has no powered doors.
+    pinch_doors: Tuple[int, ...] = ()
 
 
 def _merge_text(*maps: Dict[int, str]) -> Dict[int, str]:
@@ -270,6 +273,14 @@ def _merge(*maps: Dict[int, str]) -> Dict[int, str]:
 # Shared between Model S, X, 3 and Y: the headlight beams ramp, and the rear
 # lighting is boolean.  README.md, "Light Channels with Brightness Control".
 _BEAMS_RAMP = {1: RAMPING, 2: RAMPING, 3: RAMPING, 4: RAMPING}
+
+# README.md, "Other notes": "Moving Windows during Model X door movement can
+# cause false pinch detections, stopping the light show." The doors in
+# question are the powered ones a Model X has and nothing else does, so this
+# is the one closure rule whose consequence is the whole show ending rather
+# than one closure misbehaving.
+PINCH_DOOR_CHANNELS = (31, 32, 33, 34)
+WINDOW_CHANNELS = (37, 38, 39, 40)
 
 # Side markers are only fitted in North America, and rear fog only outside it
 # (plus North American Model X).  README.md, "Light channel mapping details".
@@ -313,6 +324,7 @@ _MODEL_X = dataclasses.replace(
     }),
     # Rear fog is fitted to Model X in North America too.
     optional_hardware=_merge(_MARKER_HARDWARE),
+    pinch_doors=PINCH_DOOR_CHANNELS,
     notes=(
         "Aux park and side markers are assumed to share the Model S per-side "
         "pairing; README.md does not state Model X separately.",
@@ -959,19 +971,29 @@ class ClosureFamily:
     open_ms: int
     # Windows are the documented exception to "Dance needs an open closure".
     dance_needs_open: bool = True
+    # "Closure Movement Durations" again, for the way back.
+    close_ms: int = 0
+
+    @property
+    def longest_movement_ms(self) -> int:
+        return max(self.open_ms, self.close_ms)
 
 
 _FALCON_DOORS = ClosureFamily("Falcon Doors", limit=6, dance=True,
-                              open_ms=20000)
+                              open_ms=20000, close_ms=8000)
 _FRONT_DOORS = ClosureFamily("Front Doors", limit=6, dance=False,
-                             open_ms=22000)
-_MIRRORS = ClosureFamily("Mirrors", limit=20, dance=False, open_ms=2000)
+                             open_ms=22000, close_ms=3000)
+_MIRRORS = ClosureFamily("Mirrors", limit=20, dance=False, open_ms=2000,
+                         close_ms=2000)
 _WINDOWS = ClosureFamily("Windows", limit=6, dance=True, open_ms=4000,
-                         dance_needs_open=False)
-_LIFTGATE = ClosureFamily("Liftgate", limit=6, dance=True, open_ms=14000)
+                         dance_needs_open=False, close_ms=4000)
+_LIFTGATE = ClosureFamily("Liftgate", limit=6, dance=True, open_ms=14000,
+                          close_ms=4000)
 _DOOR_HANDLES = ClosureFamily("Door Handles", limit=20, dance=False,
-                              open_ms=2000)
-_CHARGE_PORT = ClosureFamily("Charge Port", limit=3, dance=True, open_ms=2000)
+                              open_ms=2000, close_ms=2000)
+_CHARGE_PORT = ClosureFamily("Charge Port", limit=3, dance=True, open_ms=2000,
+                             close_ms=2000)
+
 
 CLOSURE_FAMILIES: Dict[int, ClosureFamily] = {
     31: _FALCON_DOORS, 32: _FALCON_DOORS,
@@ -1443,6 +1465,75 @@ def analyze_variants(
     return out
 
 
+def _check_windows_during_door_movement(
+    show: Show, profile: VehicleProfile, findings: List[Finding]
+) -> None:
+    """README.md: this is the one thing that stops the show outright.
+
+    "Moving Windows during Model X door movement can cause false pinch
+    detections, stopping the light show." A door keeps moving after its
+    command, for the duration in "Closure Movement Durations", so the window
+    to avoid is the command plus that movement, not the command alone.
+    """
+    if not profile.pinch_doors:
+        return
+
+    moving: List[Tuple[int, int, int, str]] = []
+    for channel in profile.pinch_doors:
+        if channel > show.channel_count:
+            continue
+        family = CLOSURE_FAMILIES[channel]
+        for run in runs_of(show.series(channel)):
+            if run.percent not in COUNTED_COMMANDS:
+                continue
+            start = run.start_frame * show.step_time_ms
+            if run.percent == OPEN:
+                length = family.open_ms
+            elif run.percent == CLOSE:
+                length = family.close_ms
+            else:
+                length = family.longest_movement_ms
+            moving.append((start, start + length, channel,
+                           CLOSURE_CODES[run.percent]))
+    if not moving:
+        return
+
+    clashes: List[Tuple[int, int, int]] = []
+    for channel in WINDOW_CHANNELS:
+        if channel > show.channel_count:
+            continue
+        for run in runs_of(show.series(channel)):
+            if run.percent not in COUNTED_COMMANDS:
+                continue
+            start = run.start_frame * show.step_time_ms
+            end = start + run.frames * show.step_time_ms
+            for door_start, door_end, door_channel, _ in moving:
+                if start < door_end and door_start < end:
+                    clashes.append((start, channel, door_channel))
+                    break
+
+    if not clashes:
+        return
+    first_at, window, door = min(clashes)
+    findings.append(Finding(
+        severity=WARNING,
+        code="window-during-door-movement",
+        summary="{} moves while {} is still moving, {} time(s)".format(
+            channel_name(window), channel_name(door), len(clashes)),
+        detail=(
+            "README.md: moving windows during {label} door movement can cause "
+            "false pinch detections, which stop the show rather than just "
+            "that closure. A door keeps moving for up to {seconds} s after "
+            "its command, so leave the windows alone until it has finished."
+        ).format(label=profile.label,
+                 seconds=max(CLOSURE_FAMILIES[c].longest_movement_ms
+                             for c in profile.pinch_doors) // 1000),
+        channels=(window, door),
+        first_at_ms=first_at,
+        occurrences=len(clashes),
+    ))
+
+
 def analyze(show: Show, profile: VehicleProfile) -> List[Finding]:
     """Return everything about this show that will surprise the author."""
     findings: List[Finding] = []
@@ -1451,6 +1542,7 @@ def analyze(show: Show, profile: VehicleProfile) -> List[Finding]:
     _check_ramp_leaders(show, profile, findings)
     _check_boolean_ramps(show, profile, findings)
     _check_absent_channels(show, profile, findings)
+    _check_windows_during_door_movement(show, profile, findings)
     findings.sort(key=lambda f: (
         _SEVERITY_ORDER[f.severity],
         f.first_at_ms if f.first_at_ms is not None else 0,
