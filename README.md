@@ -27,7 +27,21 @@ Multiple light show repositories can be found online. A screenshot from [XLightS
   - a show .mp3 or .wav file (wav is recommended)
 - The fseq filename must match the mp3/wav filenames
     - E.g., show1.fseq/show1.wav can exist with show2.fseq/show2.mp3
-- Multiple shows can be stored on 1 USB drive (2023.44.25+ Vehicle Software)
+- <a name="multiple_shows"></a>Multiple shows can be stored on 1 USB drive (2023.44.25+ Vehicle Software)
+    - Put every show directly in the same LightShow folder, side by side. Shows in subfolders are not found.
+    - Each show is one .fseq plus the .mp3/.wav of the same name; the vehicle lists each pair as its own entry.
+    - The name shown in the picker is the filename, so name the files the way you want them to read on screen.
+    - [usb_check.py](#usb_check) reports which shows a drive will offer, and why any other was left out.
+
+  ```
+  LightShow/
+    blue-da-ba-dee-by-eiffel-65.fseq
+    blue-da-ba-dee-by-eiffel-65.wav
+    darude-sandstorm.fseq
+    darude-sandstorm.mp3
+    nz-lightshow-2023.fseq
+    nz-lightshow-2023.mp3
+  ```
 - Must be formatted as exFAT, FAT 32 (for Windows), MS-DOS FAT (for Mac), ext3, or ext4. NTFS is currently not supported.
 - Must **not** contain a base-level TeslaCam folder.
 - Must **not** contain any map update or firmware update files.
@@ -191,6 +205,40 @@ Expected output looks like:
 ```
 > python validator.py lightshow.fseq
 Found 2247 frames, step time of 20 ms for a total duration of 0:00:44.940000.
+```
+
+## <a name="usb_check"></a>USB Drive Check Script
+A drive that does not meet the [USB flash drive requirements](#usb-flash-drive-requirements) fails quietly: the show is missing from the list, or the dialog stays titled "Light Show" instead of "Custom Light Show", with nothing to say which rule was broken. This matters most with [several shows on one drive](#multiple_shows), where one mis-named file removes one entry from the picker and leaves the rest working.
+
+A Python [usb_check.py](tools/usb_check.py) script reads a finished drive and reports the list of shows the vehicle will offer, plus the reason for anything left out:
+```
+python3 tools/usb_check.py /Volumes/LIGHTSHOW
+```
+On Windows, pass the drive letter (```python tools\usb_check.py E:\```); you can also point it at the LightShow folder itself, or run it with no argument and drag the drive onto the window. Add ```-v``` for the informational notes, ```--json``` for machine-readable output, or ```--strict``` to exit non-zero on warnings as well as errors.
+
+It checks the base-level LightShow folder and its spelling, the .fseq/audio pairing for every show, each sequence against the same rules as [validator.py](#light-show-sequence-validator-script), the 44.1 kHz audio requirement, the drive's format, and the absence of a TeslaCam folder.
+
+Expected output looks like:
+```
+> python3 tools/usb_check.py /Volumes/LIGHTSHOW
+Drive:       /Volumes/LIGHTSHOW  (exfat)
+Show folder: /Volumes/LIGHTSHOW/LightShow
+
+The car will list 2 custom shows:
+
+   1. darude-sandstorm              3 min 34 sec   darude-sandstorm.mp3
+   2. nz-lightshow-2023             1 min 50 sec   nz-lightshow-2023.mp3
+
+1 show will not appear:
+
+  [ERROR  ] AUDIO_MISSING  knight-rider-theme-kitt
+    knight-rider-theme-kitt.fseq has no matching .mp3 or .wav.
+      Copy the audio the show was sequenced against into the same folder
+      and name it knight-rider-theme-kitt.wav or knight-rider-theme-kitt.mp3.
+      A show without its audio is not offered in the car.
+      README: USB flash drive requirements
+
+1 error(s), 0 warning(s), 1 note(s).
 ```
 
 ## <a name="vehicle_preview"></a>Vehicle Preview Script

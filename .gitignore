@@ -12,3 +12,5 @@ dist/
 
 # Scratch space used by the CI example-show job
 _examples/
+_drive/
+_baddrive/

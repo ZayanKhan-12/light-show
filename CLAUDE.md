@@ -25,6 +25,7 @@ almost every change is a change to something a car will eventually play.
 | `xlights/channel_map.json` | Recorded channel assignment of every model. A regression lock, see below. |
 | `tools/xlights_layers.py` | Applies and verifies the two files above against the zip. |
 | `tools/vehicle_preview.py` | Reports where a `.fseq` will behave differently on a given vehicle than it does in the xLights preview. |
+| `tools/usb_check.py` | Reads a finished USB drive and reports which shows the car will list, and why any other was left out. |
 | `tests/` | `unittest` suite, standard library only. |
 | `examples/` | Example shows, distributed as zips. |
 
@@ -116,6 +117,44 @@ comment. If the code and the README disagree, that is a bug worth raising rather
 than silently picking one. Where the README is simply silent — it describes the
 aux park pairing for Model S and Model 3/Y but not Model X — say so in a note
 instead of presenting the guess as fact.
+
+## The drive is an interface too
+
+The car finds custom shows by convention, not by a manifest: every `.fseq` at
+the top level of a base-level `LightShow` folder is one entry in the picker,
+paired with the `.mp3`/`.wav` of the same name. Vehicle software 2023.44.25
+made that list hold more than one show, which is
+[#48](https://github.com/teslamotors/light-show/issues/48). Nothing in the car
+explains a drive it rejected — the show is simply absent, or the dialog title
+stays "Light Show" instead of "Custom Light Show" — so every rule the README
+states about the drive is a rule a tool has to state back to the owner.
+
+`tools/usb_check.py` does that:
+
+```bash
+python3 tools/usb_check.py /Volumes/LIGHTSHOW      # or the LightShow folder
+python3 tools/usb_check.py /Volumes/LIGHTSHOW --json --strict
+```
+
+Things worth knowing before changing it:
+
+- **It reuses `validator.validate()`** rather than restating the `.fseq`
+  limits. A limit should only ever change in one place. This is also why it
+  imports the module instead of running the script, which would block on
+  `input()`.
+- **Severity is a promise about the car.** `ERROR` means the show or the drive
+  will not play, and drops the show out of the picker preview; `WARNING` means
+  it plays but something is wrong, like 48 kHz audio; `INFO` is a note. Do not
+  promote a finding to `ERROR` unless the README says the car rejects it.
+- **The audio parsers read headers, never audio.** A file whose header cannot
+  be parsed is reported as unread, never as a bad drive; the car is the
+  authority on what it can play, and a false rejection is worse than silence.
+- **Filesystem detection is best effort** and platform-specific
+  (`mount`, `/proc/mounts`, `GetVolumeInformationW`). It must never raise, and
+  "unknown" is a perfectly good answer for a folder on a normal disk.
+- **Say when the README is silent.** The picker's sort order and the exact
+  naming of a map update file are not documented, so those findings say they
+  are a guess. Do not quietly harden a guess into a rule.
 
 ## Conventions
 
